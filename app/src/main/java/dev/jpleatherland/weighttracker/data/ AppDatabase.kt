@@ -1,4 +1,4 @@
-package com.example.weighttracker.data
+package dev.jpleatherland.weighttracker.data
 
 import androidx.room.Database
 import androidx.room.RoomDatabase

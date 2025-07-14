@@ -1,4 +1,4 @@
-package com.example.weighttracker
+package dev.jpleatherland.weighttracker
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -8,18 +8,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Warning
 
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.*
-import com.example.weighttracker.data.WeightRepository
-import com.example.weighttracker.data.WeightViewModelFactory
-import com.example.weighttracker.data.provideDatabase
-import com.example.weighttracker.navigation.AppNavHost
-import com.example.weighttracker.ui.theme.WeightTrackerTheme
-import com.example.weighttracker.viewmodel.WeightViewModel
+import dev.jpleatherland.weighttracker.data.WeightRepository
+import dev.jpleatherland.weighttracker.data.WeightViewModelFactory
+import dev.jpleatherland.weighttracker.data.provideDatabase
+import dev.jpleatherland.weighttracker.navigation.AppNavHost
+import dev.jpleatherland.weighttracker.ui.theme.WeightTrackerTheme
+import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,7 +65,20 @@ class MainActivity : ComponentActivity() {
                                 navController.navigate("goals") {
                                     launchSingleTop = true
                                 }
-                            })
+                            }
+                        )
+                        if (BuildConfig.DEBUG) {
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Default.Warning, contentDescription = null) },
+                                label = { Text("Debug") },
+                                selected = navController.currentDestination?.route == "debug",
+                                onClick = {
+                                    navController.navigate("debug") {
+                                        launchSingleTop = true
+                                    }
+                                }
+                            )
+                        }
                     }
                 }) { padding ->
                     Box(modifier = Modifier.padding(padding)) {

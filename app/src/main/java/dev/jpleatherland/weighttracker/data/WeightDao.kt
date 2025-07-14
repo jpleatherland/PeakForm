@@ -1,7 +1,8 @@
-package com.example.weighttracker.data
+package dev.jpleatherland.weighttracker.data
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
@@ -15,4 +16,10 @@ interface WeightDao {
 
     @Query("SELECT * FROM WeightEntry WHERE date >= :since ORDER BY date DESC")
     fun getEntriesSince(since: Long): Flow<List<WeightEntry>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(entries: List<WeightEntry>)
+
+    @Query("DELETE FROM WeightEntry")
+    suspend fun deleteAll()
 }

@@ -1,4 +1,4 @@
-package com.example.weighttracker.ui
+package dev.jpleatherland.weighttracker.ui
 
 import android.annotation.SuppressLint
 import android.content.res.Configuration
@@ -17,20 +17,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.motionEventSpy
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.example.weighttracker.data.WeightEntry
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.ValueFormatter
+import dev.jpleatherland.weighttracker.data.WeightEntry
 import java.text.SimpleDateFormat
 import java.util.*
 
-import com.example.weighttracker.viewmodel.WeightViewModel
+import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
 
 @Composable
 fun ChartLayout(entries: List<WeightEntry>) {
@@ -119,6 +118,7 @@ fun WeightChart(entries: List<WeightEntry>, modifier: Modifier = Modifier) {
     }, update = { chart ->
         val dataPoints = entries
             .filter { it.weight != null }
+            .sortedBy { it.date }
             .map {
                 Entry(it.date.toFloat(), it.weight!!.toFloat())
             }
@@ -165,6 +165,7 @@ fun CaloriesChart(entries: List<WeightEntry>, modifier: Modifier = Modifier) {
     }, update = { chart ->
         val dataPoints = entries
             .filter { it.calories != null }
+            .sortedBy { it.date }
             .map {
                 Entry(it.date.toFloat(), it.calories!!.toFloat())
             }

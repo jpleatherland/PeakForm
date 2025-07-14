@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.weighttracker"
+    namespace = "dev.jpleatherland.weighttracker"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.weighttracker"
+        applicationId = "dev.jpleatherland.weighttracker"
         minSdk = 28
         targetSdk = 35
         versionCode = 1
@@ -37,6 +37,24 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+    lint {
+        disable += "NullSafeMutableLiveData"
+    }
+    signingConfigs {
+        create("debugRelease") {
+            storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("debugRelease")
+        }
     }
 }
 

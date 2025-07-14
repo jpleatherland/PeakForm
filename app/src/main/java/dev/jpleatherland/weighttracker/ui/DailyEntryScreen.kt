@@ -1,4 +1,4 @@
-package com.example.weighttracker.ui
+package dev.jpleatherland.weighttracker.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,8 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.example.weighttracker.data.WeightEntry
-import com.example.weighttracker.viewmodel.WeightViewModel
+import dev.jpleatherland.weighttracker.data.WeightEntry
+import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
 import java.util.Locale
 
 @Composable

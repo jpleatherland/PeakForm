@@ -1,4 +1,4 @@
-package com.example.weighttracker.ui.theme
+package dev.jpleatherland.weighttracker.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

@@ -1,13 +1,14 @@
-package com.example.weighttracker.navigation
+package dev.jpleatherland.weighttracker.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.example.weighttracker.ui.ChartScreen
-import com.example.weighttracker.ui.DailyEntryScreen
-import com.example.weighttracker.ui.GoalScreen
-import com.example.weighttracker.viewmodel.WeightViewModel
+import dev.jpleatherland.weighttracker.ui.ChartScreen
+import dev.jpleatherland.weighttracker.ui.DailyEntryScreen
+import dev.jpleatherland.weighttracker.ui.GoalScreen
+import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
+
 
 @Composable
 fun AppNavHost(
@@ -19,5 +20,14 @@ fun AppNavHost(
         composable("entry") { DailyEntryScreen(viewModel) }
         composable("charts") { ChartScreen(viewModel) }
         composable("goals") { GoalScreen() }
+//        if (BuildConfig.DEBUG) {
+//                viewModel.dao?.let { dao -> DebugScreen(dao = dao) }
+//            includeDebugRoutes(viewModel)
+//        }
+        appNavHost_addDebugRoutes(
+            navController,
+            viewModel,
+            this
+        )
     }
 }

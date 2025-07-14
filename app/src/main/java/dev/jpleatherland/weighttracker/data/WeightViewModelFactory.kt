@@ -1,8 +1,8 @@
-package com.example.weighttracker.data
+package dev.jpleatherland.weighttracker.data
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import com.example.weighttracker.viewmodel.WeightViewModel
+import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
 
 class WeightViewModelFactory(
     private val repository: WeightRepository

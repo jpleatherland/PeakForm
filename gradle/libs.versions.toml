@@ -11,6 +11,7 @@ composeBom = "2024.04.01"
 compose-nav = "2.9.1"
 room = "2.7.2"
 mpandroidchart = "v3.1.0"
+ktlint = "11.6.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -36,8 +37,10 @@ room-compiler = { group = "androidx.room", name = "room-compiler", version.ref =
 
 mpandroidchart = { group = "com.github.PhilJay", name = "MPAndroidChart", version.ref = "mpandroidchart" }
 
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version = "2.1.21-2.0.1" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint" }

@@ -5,16 +5,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Warning
-
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.*
+import dev.jpleatherland.weighttracker.data.GoalRepository
 import dev.jpleatherland.weighttracker.data.WeightRepository
 import dev.jpleatherland.weighttracker.data.WeightViewModelFactory
 import dev.jpleatherland.weighttracker.data.provideDatabase
@@ -28,7 +28,8 @@ class MainActivity : ComponentActivity() {
 
         val db = provideDatabase(this)
         val repo = WeightRepository(db.weightDao())
-        val factory = WeightViewModelFactory(repo)
+        val goalRepo = GoalRepository(db.goalDao())
+        val factory = WeightViewModelFactory(repo, goalRepo)
         val viewModel = ViewModelProvider(this, factory)[WeightViewModel::class.java]
 
         setContent {
@@ -40,32 +41,52 @@ class MainActivity : ComponentActivity() {
                             icon = { Icon(Icons.Default.Edit, contentDescription = null) },
                             label = { Text("Log") },
                             selected = navController.currentDestination?.route == "entry",
-                            onClick = { navController.navigate("entry") }
+                            onClick = { navController.navigate("entry") },
                         )
-                        NavigationBarItem(icon = {
-                            Icon(
-                                Icons.Default.DateRange, contentDescription = null
-                            )
-                        },
+                        NavigationBarItem(
+                            icon = {
+                                Icon(
+                                    Icons.Default.DateRange,
+                                    contentDescription = null,
+                                )
+                            },
                             label = { Text("Trends") },
                             selected = navController.currentDestination?.route == "charts",
                             onClick = {
                                 navController.navigate("charts") {
                                     launchSingleTop = true
                                 }
-                            })
-                        NavigationBarItem(icon = {
-                            Icon(
-                                Icons.Default.Star, contentDescription = null
-                            )
-                        },
+                            },
+                        )
+                        NavigationBarItem(
+                            icon = {
+                                Icon(
+                                    Icons.Default.Star,
+                                    contentDescription = null,
+                                )
+                            },
                             label = { Text("Goals") },
                             selected = navController.currentDestination?.route == "goals",
                             onClick = {
                                 navController.navigate("goals") {
                                     launchSingleTop = true
                                 }
-                            }
+                            },
+                        )
+                        NavigationBarItem(
+                            icon = {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = null,
+                                )
+                            },
+                            label = { Text("History") },
+                            selected = navController.currentDestination?.route == "history",
+                            onClick = {
+                                navController.navigate("history") {
+                                    launchSingleTop = true
+                                }
+                            },
                         )
                         if (BuildConfig.DEBUG) {
                             NavigationBarItem(
@@ -76,7 +97,7 @@ class MainActivity : ComponentActivity() {
                                     navController.navigate("debug") {
                                         launchSingleTop = true
                                     }
-                                }
+                                },
                             )
                         }
                     }

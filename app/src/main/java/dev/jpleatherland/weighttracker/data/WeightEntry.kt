@@ -5,8 +5,8 @@ import androidx.room.PrimaryKey
 
 @Entity
 data class WeightEntry(
-    @PrimaryKey(autoGenerate=true) val id: Int=0,
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val date: Long = System.currentTimeMillis(),
     val weight: Double? = null,
-    val calories: Int? = null
+    val calories: Int? = null,
 )

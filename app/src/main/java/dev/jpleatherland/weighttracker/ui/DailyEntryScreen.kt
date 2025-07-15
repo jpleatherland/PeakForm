@@ -1,14 +1,15 @@
 package dev.jpleatherland.weighttracker.ui
 
+import android.icu.text.NumberFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -23,9 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import dev.jpleatherland.weighttracker.data.WeightEntry
 import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
-import java.util.Locale
 
 @Composable
 fun DailyEntryScreen(viewModel: WeightViewModel) {
@@ -35,31 +34,34 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
     val entries by viewModel.entries.collectAsState()
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         OutlinedTextField(
             value = weight,
             onValueChange = { weight = it },
             label = { Text("Enter weight (kg)") },
-            keyboardOptions = KeyboardOptions.Default.copy(
-                keyboardType = KeyboardType.Decimal,
-                imeAction = ImeAction.Next
-            ),
-            modifier = Modifier.fillMaxWidth()
+            keyboardOptions =
+                KeyboardOptions.Default.copy(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Next,
+                ),
+            modifier = Modifier.fillMaxWidth(),
         )
 
         OutlinedTextField(
             value = calories,
             onValueChange = { calories = it },
             label = { Text("Enter calories") },
-            keyboardOptions = KeyboardOptions.Default.copy(
-                keyboardType = KeyboardType.Number,
-                imeAction = ImeAction.Done
-            ),
-            modifier = Modifier.fillMaxWidth()
+            keyboardOptions =
+                KeyboardOptions.Default.copy(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done,
+                ),
+            modifier = Modifier.fillMaxWidth(),
         )
 
         Button(
@@ -73,37 +75,38 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
                     calories = ""
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Save Entry")
         }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        val avgWeight by viewModel.sevenDayAvgWeight.collectAsState()
 
-        Text("Logged Entries:", style = MaterialTheme.typography.titleMedium)
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        val numberFormat = NumberFormat.getNumberInstance()
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            items(entries) { entry ->
-                EntryRow(entry)
+            Text("Metrics", style = MaterialTheme.typography.headlineSmall)
+
+            avgWeight?.let {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(4.dp),
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("7-Day Rolling Average Weight", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            text = numberFormat.format(it),
+                            style = MaterialTheme.typography.headlineMedium,
+                        )
+                    }
+                }
             }
         }
     }
-}
-@Composable
-fun EntryRow(entry: WeightEntry) {
-    val date = remember(entry.date) {
-        java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
-            .format(java.util.Date(entry.date))
-    }
-
-    val weightText = entry.weight?.let { "Weight: $it kg" } ?: ""
-    val calText = entry.calories?.let { "Calories: $it kcal" } ?: ""
-
-    Text(
-        text = "$date - $weightText $calText".trim(),
-        style = MaterialTheme.typography.bodyMedium
-    )
 }

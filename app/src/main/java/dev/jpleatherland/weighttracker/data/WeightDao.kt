@@ -4,12 +4,13 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface WeightDao {
     @Insert
-    suspend fun insert (entry: WeightEntry)
+    suspend fun insert(entry: WeightEntry)
 
     @Query("SELECT * FROM WeightEntry ORDER BY date DESC")
     fun getAllEntries(): Flow<List<WeightEntry>>
@@ -22,4 +23,7 @@ interface WeightDao {
 
     @Query("DELETE FROM WeightEntry")
     suspend fun deleteAll()
+
+    @Update
+    suspend fun update(entry: WeightEntry)
 }

@@ -12,6 +12,9 @@ data class Goal(
     val targetDate: Long?, // if BY_DATE
     val ratePerWeek: Double?, // if BY_RATE
     val durationWeeks: Int?, // if BY_DURATION
+    val rateMode: RateMode?, // if BY_RATE
+    val ratePercent: Double? = null, // if rateMode is BODYWEIGHT_PERCENT
+    val ratePreset: RatePreset? = null, // if rateMode is PRESET
     val createdAt: Long = System.currentTimeMillis(),
 )
 

@@ -1,5 +1,6 @@
 package dev.jpleatherland.weighttracker.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.jpleatherland.weighttracker.BuildConfig
@@ -8,8 +9,12 @@ import dev.jpleatherland.weighttracker.data.GoalRepository
 import dev.jpleatherland.weighttracker.data.WeightDao
 import dev.jpleatherland.weighttracker.data.WeightEntry
 import dev.jpleatherland.weighttracker.data.WeightRepository
+import dev.jpleatherland.weighttracker.util.GoalCalculations
+import dev.jpleatherland.weighttracker.util.GoalCalculations.estimateCalories
+import dev.jpleatherland.weighttracker.util.GoalCalculations.reconstructRateKgPerWeek
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.Date
 import java.util.concurrent.TimeUnit
 
 class WeightViewModel(
@@ -97,6 +102,44 @@ class WeightViewModel(
                 SharingStarted.WhileSubscribed(5000),
                 null,
             )
+
+    val goalCalories: StateFlow<Int?> =
+        combine(
+            goal,
+            estimatedMaintenanceCalories,
+            entries,
+            sevenDayAvgWeight,
+        ) { goal, maintenance, entriesList, avgWeight ->
+            if (goal == null) return@combine null
+            Log.d("GoalDebug", "goal=$goal, maintenance=$maintenance, entries=${entriesList.size}, avgWeight=$avgWeight")
+            val currentWeight = avgWeight ?: entriesList.lastOrNull()?.weight ?: 0.0
+            val rate = reconstructRateKgPerWeek(goal, currentWeight)
+
+            val estimatedGoalDate =
+                GoalCalculations.estimateGoalDate(
+                    currentWeight = currentWeight,
+                    goalWeight = goal.goalWeight,
+                    rateKgPerWeek = rate,
+                    timeMode = goal.timeMode,
+                    goalType = goal.type,
+                )
+
+            val (total, dailyDelta) =
+                estimateCalories(
+                    goalType = goal.type,
+                    currentWeight = currentWeight,
+                    goalWeight = goal.goalWeight,
+                    durationWeeks = goal.durationWeeks,
+                    estimatedGoalDate = estimatedGoalDate,
+                    targetDate = goal.targetDate?.let { Date(it) },
+                    rateKgPerWeek = rate,
+                    timeMode = goal.timeMode,
+                )
+
+            val result = maintenance?.plus((dailyDelta ?: 0))
+            Log.d("GoalDebug", "goalCalories: total=$total, dailyDelta=$dailyDelta, result=$result")
+            result
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val dao: WeightDao? get() = if (BuildConfig.DEBUG) repository.weightDao else null
 }

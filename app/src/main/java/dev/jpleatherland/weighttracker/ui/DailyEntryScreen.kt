@@ -1,6 +1,7 @@
 package dev.jpleatherland.weighttracker.ui
 
 import android.icu.text.NumberFormat
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,7 +32,11 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
     var weight by remember { mutableStateOf("") }
     var calories by remember { mutableStateOf("") }
 
-    val entries by viewModel.entries.collectAsState()
+    val avgWeight by viewModel.sevenDayAvgWeight.collectAsState()
+    val maintenance by viewModel.estimatedMaintenanceCalories.collectAsState()
+    val goalCalories by viewModel.goalCalories.collectAsState()
+
+    Log.d("EntryScreen", "goalCalories=$goalCalories")
 
     Column(
         modifier =
@@ -81,9 +86,9 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
         }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-        val avgWeight by viewModel.sevenDayAvgWeight.collectAsState()
 
         val numberFormat = NumberFormat.getNumberInstance()
+
         Column(
             modifier =
                 Modifier
@@ -99,11 +104,48 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
                     elevation = CardDefaults.cardElevation(4.dp),
                 ) {
                     Column(Modifier.padding(16.dp)) {
-                        Text("7-Day Rolling Average Weight", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            "7-Day Rolling Average Weight",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
                         Text(
                             text = numberFormat.format(it),
                             style = MaterialTheme.typography.headlineMedium,
                         )
+                    }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(4.dp),
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            "Estimated Maintenance Calories",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        Text(
+                            text = "$maintenance kcal",
+                            style = MaterialTheme.typography.headlineMedium,
+                        )
+                    }
+                }
+
+                goalCalories?.let {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        elevation = CardDefaults.cardElevation(4.dp),
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(
+                                "Target Intake for Goal",
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                            Text(
+                                text = "$it kcal/day",
+                                style = MaterialTheme.typography.headlineMedium,
+                            )
+                        }
                     }
                 }
             }

@@ -7,7 +7,8 @@ import androidx.navigation.compose.composable
 import dev.jpleatherland.weighttracker.ui.ChartScreen
 import dev.jpleatherland.weighttracker.ui.DailyEntryScreen
 import dev.jpleatherland.weighttracker.ui.GoalScreen
-import dev.jpleatherland.weighttracker.ui.historyScreen
+import dev.jpleatherland.weighttracker.ui.HistoryScreen
+import dev.jpleatherland.weighttracker.ui.SettingsScreen
 import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
 
 @Composable
@@ -20,7 +21,8 @@ fun AppNavHost(
         composable("entry") { DailyEntryScreen(viewModel) }
         composable("charts") { ChartScreen(viewModel) }
         composable("goals") { GoalScreen(viewModel) }
-        composable("history") { historyScreen(viewModel) }
+        composable("history") { HistoryScreen(viewModel) }
+        composable("settings") { SettingsScreen(viewModel) }
         appNavHostAddDebugRoutes(
             navController,
             viewModel,

@@ -7,11 +7,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.health.connect.client.HealthConnectClient
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.*
 import dev.jpleatherland.weighttracker.data.GoalRepository
@@ -29,7 +31,8 @@ class MainActivity : ComponentActivity() {
         val db = provideDatabase(this)
         val repo = WeightRepository(db.weightDao())
         val goalRepo = GoalRepository(db.goalDao())
-        val factory = WeightViewModelFactory(repo, goalRepo)
+        val healthConnectClient = HealthConnectClient.getOrCreate(this)
+        val factory = WeightViewModelFactory(repo, goalRepo, healthConnectClient)
         val viewModel = ViewModelProvider(this, factory)[WeightViewModel::class.java]
 
         setContent {
@@ -84,6 +87,21 @@ class MainActivity : ComponentActivity() {
                             selected = navController.currentDestination?.route == "history",
                             onClick = {
                                 navController.navigate("history") {
+                                    launchSingleTop = true
+                                }
+                            },
+                        )
+                        NavigationBarItem(
+                            icon = {
+                                Icon(
+                                    Icons.Default.Settings,
+                                    contentDescription = null,
+                                )
+                            },
+                            label = { Text("Settings") },
+                            selected = navController.currentDestination?.route == "settings",
+                            onClick = {
+                                navController.navigate("settings") {
                                     launchSingleTop = true
                                 }
                             },

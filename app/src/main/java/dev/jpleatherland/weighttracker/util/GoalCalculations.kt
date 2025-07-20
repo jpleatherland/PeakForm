@@ -1,5 +1,6 @@
 package dev.jpleatherland.weighttracker.util
 
+import android.util.Log
 import dev.jpleatherland.weighttracker.data.Goal
 import dev.jpleatherland.weighttracker.data.GoalTimeMode
 import dev.jpleatherland.weighttracker.data.GoalType
@@ -95,14 +96,18 @@ object GoalCalculations {
                 timeMode == GoalTimeMode.BY_DURATION && durationWeeks != null && durationWeeks > 0 -> durationWeeks * 7
                 timeMode == GoalTimeMode.BY_DATE && targetDate != null ->
                     ((targetDate.time - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).toInt()
-                timeMode == GoalTimeMode.BY_RATE && estimatedGoalDate != null ->
-                    ((estimatedGoalDate.time - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).toInt()
                 else -> null
             }
 
-        val dailyCalories = days?.takeIf { it > 0 }?.let { totalCalories / it }
-        println(
-            "util: timeMode=$timeMode durationWeeks=$durationWeeks rateKgPerWeek=$rateKgPerWeek days=$days totalCalories=$totalCalories",
+        val dailyCalories =
+            when (timeMode) {
+                GoalTimeMode.BY_RATE -> (rateKgPerWeek * 7700 / 7).toInt()
+                else ->
+                    days?.takeIf { it > 0 }?.let { totalCalories / it }
+            }
+        Log.d(
+            "util",
+            ": timeMode=$timeMode durationWeeks=$durationWeeks rateKgPerWeek=$rateKgPerWeek days=$days totalCalories=$totalCalories dailyCalories=$dailyCalories",
         )
         return totalCalories to dailyCalories
     }

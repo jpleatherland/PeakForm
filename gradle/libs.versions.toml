@@ -1,5 +1,5 @@
 [versions]
-agp = "8.7.3"
+agp = "8.11.1"
 kotlin = "2.1.21"
 coreKtx = "1.15.0"
 junit = "4.13.2"
@@ -37,6 +37,7 @@ room-compiler = { group = "androidx.room", name = "room-compiler", version.ref =
 
 mpandroidchart = { group = "com.github.PhilJay", name = "MPAndroidChart", version.ref = "mpandroidchart" }
 
+health-connect = { group = "androidx.health.connect", name = "connect-client", version = "1.1.0-rc03" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -21,7 +21,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
-fun historyScreen(viewModel: WeightViewModel) {
+fun HistoryScreen(viewModel: WeightViewModel) {
     val entries by viewModel.entries.collectAsState(emptyList())
     var editingEntry by remember { mutableStateOf<WeightEntry?>(null) }
 

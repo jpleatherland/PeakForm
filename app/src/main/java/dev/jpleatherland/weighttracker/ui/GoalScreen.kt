@@ -175,16 +175,8 @@ fun GoalScreen(viewModel: WeightViewModel) {
 
     val maintenanceCalories by viewModel.estimatedMaintenanceCalories.collectAsState() // = viewModel.estimatedMaintenanceCalories
 
-    val dailyDelta: Int? =
-        when (goalType) {
-            GoalType.CUT -> (dailyCalories ?: 0)
-            GoalType.BULK -> dailyCalories
-            GoalType.TARGET_WEIGHT -> dailyCalories
-            else -> 0
-        }
-
     val targetCalories: Int? =
-        maintenanceCalories?.plus(dailyDelta ?: 0)
+        maintenanceCalories?.plus(dailyCalories ?: 0)
 
     Column(
         modifier =
@@ -208,25 +200,15 @@ fun GoalScreen(viewModel: WeightViewModel) {
                         text = String.format(Locale.UK, "%.2f kg", it),
                         style = MaterialTheme.typography.headlineMedium,
                     )
+                    Text("Estimated Maintenance", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        text = "$maintenance kcal/day",
+                        style = MaterialTheme.typography.headlineMedium,
+                    )
                 }
-                Spacer(Modifier.height(8.dp))
             }
         }
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            elevation =
-                CardDefaults
-                    .cardElevation(4.dp),
-        ) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Estimated Maintenance", style = MaterialTheme.typography.labelLarge)
-                Text(
-                    text = "$maintenance kcal/day",
-                    style = MaterialTheme.typography.headlineMedium,
-                )
-            }
-        }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
 
         Text("Set Your Goal", style = MaterialTheme.typography.headlineSmall)
 
@@ -325,27 +307,49 @@ fun GoalScreen(viewModel: WeightViewModel) {
             )
         }
 
-        Button(onClick = {
-            val goal =
-                Goal(
-                    goalWeight = goalWeight.toDoubleOrNull(),
-                    type = goalType,
-                    timeMode = timeMode,
-                    targetDate = targetDate?.time,
-                    ratePerWeek =
-                        when (rateMode) {
-                            RateMode.KG_PER_WEEK -> rateInput.toDoubleOrNull()
-                            RateMode.BODYWEIGHT_PERCENT -> null // We'll reconstruct from percent + weight
-                            RateMode.PRESET -> null // We'll reconstruct from preset + weight
-                            else -> null
-                        },
-                    durationWeeks = durationWeeks.toIntOrNull(),
-                    rateMode = rateMode,
-                    ratePercent = if (rateMode == RateMode.BODYWEIGHT_PERCENT) rateInput.toDoubleOrNull() else null,
-                    ratePreset = if (rateMode == RateMode.PRESET) selectedPreset else null,
-                )
-            viewModel.setGoal(goal)
-        }) {
+        val isImpossibleGoal: Boolean =
+            dailyCalories == null ||
+                when (goalType) {
+                    GoalType.CUT -> targetCalories!! < 1000
+                    GoalType.BULK -> dailyCalories > 2000
+                    GoalType.TARGET_WEIGHT -> targetCalories!! < 1000 || dailyCalories > 2000
+                    else -> false
+                }
+
+        if (isImpossibleGoal) {
+            Text(
+                "This goal is not possible, is ill advised or is possibly unsafe. Please adjust your target weight, rate, or time frame.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+        }
+
+        // Save Goal Button
+        Button(
+            onClick = {
+                val goal =
+                    Goal(
+                        goalWeight = goalWeight.toDoubleOrNull(),
+                        type = goalType,
+                        timeMode = timeMode,
+                        targetDate = targetDate?.time,
+                        ratePerWeek =
+                            when (rateMode) {
+                                RateMode.KG_PER_WEEK -> rateInput.toDoubleOrNull()
+                                RateMode.BODYWEIGHT_PERCENT -> null // We'll reconstruct from percent + weight
+                                RateMode.PRESET -> null // We'll reconstruct from preset + weight
+                                else -> null
+                            },
+                        durationWeeks = durationWeeks.toIntOrNull(),
+                        rateMode = rateMode,
+                        ratePercent = if (rateMode == RateMode.BODYWEIGHT_PERCENT) rateInput.toDoubleOrNull() else null,
+                        ratePreset = if (rateMode == RateMode.PRESET) selectedPreset else null,
+                    )
+                viewModel.setGoal(goal)
+            },
+            enabled = !isImpossibleGoal && goalWeight.isNotBlank() && (timeMode != GoalTimeMode.BY_DURATION || durationWeeks.isNotBlank()),
+        ) {
             Text("Save Goal")
         }
 

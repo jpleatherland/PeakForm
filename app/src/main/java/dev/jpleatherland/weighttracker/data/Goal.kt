@@ -2,6 +2,7 @@ package dev.jpleatherland.weighttracker.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import java.util.Date
 
 @Entity(tableName = "goal")
 data class Goal(
@@ -45,3 +46,10 @@ enum class RatePreset(
     MODERATE("Moderate", 0.005),
     AGGRESSIVE("Aggressive", 0.01),
 }
+
+data class GoalProgress(
+    val targetCalories: Int,
+    val estimatedGoalDate: Date?, // nullable if unknown
+    val targetDate: Date?, // nullable if not set
+    val isAheadOfSchedule: Boolean,
+)

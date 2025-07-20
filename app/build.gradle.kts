@@ -8,12 +8,12 @@ plugins {
 
 android {
     namespace = "dev.jpleatherland.weighttracker"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "dev.jpleatherland.weighttracker"
         minSdk = 28
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -80,6 +80,8 @@ dependencies {
     implementation(libs.room.ktx)
 
     implementation(libs.mpandroidchart)
+
+    implementation(libs.health.connect)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

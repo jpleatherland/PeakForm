@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.coroutines.launch
+import dev.jpleatherland.weighttracker.util.GoalCalculations
 
 class GoalManager(
     private val weightRepository: WeightRepository,
@@ -28,9 +29,18 @@ class GoalManager(
                     goalSegmentRepository
                         .getAllSegmentsForGoal(goal.id)
                 val activeSegment = segments.lastOrNull() ?: return@collect
+                val avgWeight = entries.mapNotNull { it.weight }.averageOrNull() ?: return@collect
+                val recentEntries = entries.takeLast(14)
+                val avgCalories = recentEntries.mapNotNull { it.calories }.averageOrNull() ?: return@collect
+                val maintenance = GoalCalculations.estimateMaintenance(avgWeight, avgCalories)
 
-                // Logic to adjust segments based on weight entries
-                // This is where you would implement the logic to update segments
+                val newSegments = GoalCalculations.generateSegments(goal, avgWeight, maintenance)
+
+                // Replace old segments with new ones
+                goalSegmentRepository.insertSegments(newSegments)
+
+                Log.d("GoalManager", "Regenerated ${newSegments.size} segments for goal ${goal.id}")
+
             }
         }
     }

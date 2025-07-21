@@ -1,5 +1,7 @@
 package dev.jpleatherland.weighttracker.util
 
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Calendar
 import java.util.Date
 
@@ -14,3 +16,6 @@ fun Date.asDayEpochMillis(): Long {
         }
     return calendar.timeInMillis
 }
+
+fun LocalDate.toEpochMillis(): Long =
+    this.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()

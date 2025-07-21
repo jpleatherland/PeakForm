@@ -1,10 +1,15 @@
 package dev.jpleatherland.weighttracker.util
 
 import dev.jpleatherland.weighttracker.data.Goal
+import dev.jpleatherland.weighttracker.data.GoalSegment
 import dev.jpleatherland.weighttracker.data.GoalTimeMode
 import dev.jpleatherland.weighttracker.data.GoalType
 import dev.jpleatherland.weighttracker.data.RateMode
 import dev.jpleatherland.weighttracker.data.RatePreset
+import dev.jpleatherland.weighttracker.util.asDayEpochMillis
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.util.Date
 import kotlin.math.abs
 
@@ -162,4 +167,50 @@ object GoalCalculations {
             targetCalories = targetCalories,
         )
     }
+
+    fun generateSegments(
+        goal: Goal,
+        currentWeight: Double,
+        maintenanceCalories: Int,
+        today: LocalDate = LocalDate.now()
+    ): List<GoalSegment> {
+        val projection = project(goal, currentWeight, maintenanceCalories, rateInput =
+            when (goal.rateMode) {
+                RateMode.KG_PER_WEEK -> goal.ratePerWeek?.toString() ?: ""
+                RateMode.BODYWEIGHT_PERCENT -> goal?.ratePercent?.toString() ?: ""
+                RateMode.PRESET -> "" // not used
+                else -> ""
+            })
+        val goalId = goal.id ?: return emptyList()
+        val ratePerWeek = projection.rateKgPerWeek.takeIf { it != 0.0 } ?: return emptyList()
+
+        val goalDateLocal = projection.goalDate?.toInstant()?.atZone(ZoneId.systemDefault())?.toLocalDate()
+
+        val totalWeeks = ChronoUnit.WEEKS.between(today, goalDateLocal).toInt().coerceAtLeast(1)
+
+        val segments = mutableListOf<GoalSegment>()
+
+        var startWeight = currentWeight
+        var startDate = today
+
+        repeat(totalWeeks) { i ->
+            val endDate = startDate.plusWeeks(1)
+            val endWeight = startWeight + ratePerWeek
+            val entity = GoalSegment(
+                goalId = goalId,
+                startDate = startDate.toEpochMillis(),
+                endDate = endDate.toEpochMillis(),
+                startWeight = startWeight,
+                endWeight = endWeight,
+                targetCalories = projection.targetCalories ?: 0
+            )
+            segments += entity
+
+            startWeight = endWeight
+            startDate = endDate
+        }
+
+        return segments
+    }
+
 }

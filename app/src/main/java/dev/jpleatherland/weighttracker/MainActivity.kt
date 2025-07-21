@@ -17,6 +17,7 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.*
 import dev.jpleatherland.weighttracker.data.GoalRepository
+import dev.jpleatherland.weighttracker.data.GoalSegmentRepository
 import dev.jpleatherland.weighttracker.data.WeightRepository
 import dev.jpleatherland.weighttracker.data.WeightViewModelFactory
 import dev.jpleatherland.weighttracker.data.provideDatabase
@@ -31,8 +32,9 @@ class MainActivity : ComponentActivity() {
         val db = provideDatabase(this)
         val repo = WeightRepository(db.weightDao())
         val goalRepo = GoalRepository(db.goalDao())
+        val goalSegmentRepo = GoalSegmentRepository(db.goalSegmentDao())
         val healthConnectClient = HealthConnectClient.getOrCreate(this)
-        val factory = WeightViewModelFactory(repo, goalRepo, healthConnectClient)
+        val factory = WeightViewModelFactory(repo, goalRepo, goalSegmentRepo, healthConnectClient)
         val viewModel = ViewModelProvider(this, factory)[WeightViewModel::class.java]
 
         setContent {

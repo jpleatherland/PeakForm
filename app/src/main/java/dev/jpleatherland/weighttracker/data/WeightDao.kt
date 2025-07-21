@@ -9,8 +9,8 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface WeightDao {
-    @Insert
-    suspend fun insert(entry: WeightEntry)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entry: WeightEntry): Long
 
     @Query("SELECT * FROM WeightEntry ORDER BY date DESC")
     fun getAllEntries(): Flow<List<WeightEntry>>

@@ -25,6 +25,7 @@ import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.ValueFormatter
+import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
 import dev.jpleatherland.weighttracker.data.WeightEntry
 import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
 import java.text.SimpleDateFormat
@@ -101,6 +102,7 @@ fun ChartLayout(entries: List<WeightEntry>) {
 @Composable
 fun WeightChart(
     entries: List<WeightEntry>,
+    goalWeight: Double? = null,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -120,9 +122,6 @@ fun WeightChart(
             xAxis.granularity = 1f
             xAxis.valueFormatter =
                 object : ValueFormatter() {
-                    // not fussed about Locale.getDefault() being stale if Locale changed while app is in use
-                    // it'll all be fine on app restart
-                    // and won't break in the mean time
                     @SuppressLint("ConstantLocale")
                     private val sdf = SimpleDateFormat("dd/MM", Locale.getDefault())
 
@@ -138,6 +137,33 @@ fun WeightChart(
                     Entry(it.date.toFloat(), it.weight!!.toFloat())
                 }
 
+        // Trend line calculation
+        val trendPoints = calculateTrendLine(dataPoints)
+
+        val goalDataSet =
+            goalWeight?.let { gw ->
+                if (dataPoints.isNotEmpty()) {
+                    val goalEntries =
+                        listOf(
+                            Entry(dataPoints.first().x, gw.toFloat()),
+                            Entry(dataPoints.last().x, gw.toFloat()),
+                        )
+                    LineDataSet(
+                        goalEntries,
+                        "Goal",
+                    ).apply {
+                        color = Color.GREEN
+                        lineWidth = 2f
+                        setDrawCircles(false)
+                        setDrawValues(false)
+                        enableDashedLine(10f, 5f, 0f)
+                        setDrawHighlightIndicators(false)
+                    }
+                } else {
+                    null
+                }
+            }
+
         val lineDataSet =
             LineDataSet(dataPoints, "Weight (kg)").apply {
                 color = Color.BLUE
@@ -146,14 +172,46 @@ fun WeightChart(
                 setDrawValues(false)
             }
 
-        chart.data = LineData(lineDataSet)
+        val trendDataSet =
+            LineDataSet(trendPoints, "Trend").apply {
+                color = Color.GRAY
+                lineWidth = 2f
+                setDrawCircles(false)
+                setDrawValues(false)
+                enableDashedLine(10f, 5f, 0f)
+                setDrawHighlightIndicators(false)
+            }
+
+        val dataSets = mutableListOf(lineDataSet, trendDataSet)
+        goalDataSet?.let { dataSets.add(it) }
+        chart.data = LineData(dataSets as List<ILineDataSet>?)
+
         chart.invalidate()
     })
+}
+
+// Helper for linear regression
+private fun calculateTrendLine(entries: List<Entry>): List<Entry> {
+    if (entries.size < 2) return entries // Not enough for regression
+
+    val n = entries.size
+    val sumX = entries.sumOf { it.x.toDouble() }
+    val sumY = entries.sumOf { it.y.toDouble() }
+    val sumXY = entries.sumOf { (it.x * it.y).toDouble() }
+    val sumX2 = entries.sumOf { (it.x * it.x).toDouble() }
+
+    val b = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
+    val a = (sumY - b * sumX) / n
+
+    return entries.map { entry ->
+        Entry(entry.x, (a + b * entry.x).toFloat())
+    }
 }
 
 @Composable
 fun CaloriesChart(
     entries: List<WeightEntry>,
+    goalCalories: Int? = null,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -173,9 +231,6 @@ fun CaloriesChart(
             xAxis.granularity = 1f
             xAxis.valueFormatter =
                 object : ValueFormatter() {
-                    // not fussed about Locale.getDefault() being stale if Locale changed while app is in use
-                    // it'll all be fine on app restart
-                    // and won't break in the mean time
                     @SuppressLint("ConstantLocale")
                     private val sdf = SimpleDateFormat("dd/MM", Locale.getDefault())
 
@@ -190,6 +245,34 @@ fun CaloriesChart(
                 .map {
                     Entry(it.date.toFloat(), it.calories!!.toFloat())
                 }
+
+        // Trend line calculation (reuse the same helper function!)
+        val trendPoints = calculateTrendLine(dataPoints)
+
+        val goalDataSet =
+            goalCalories?.let { gc ->
+                if (dataPoints.isNotEmpty()) {
+                    val goalEntries =
+                        listOf(
+                            Entry(dataPoints.first().x, gc.toFloat()),
+                            Entry(dataPoints.last().x, gc.toFloat()),
+                        )
+                    LineDataSet(
+                        goalEntries,
+                        "Goal",
+                    ).apply {
+                        color = Color.GREEN
+                        lineWidth = 2f
+                        setDrawCircles(false)
+                        setDrawValues(false)
+                        enableDashedLine(10f, 5f, 0f)
+                        setDrawHighlightIndicators(false)
+                    }
+                } else {
+                    null
+                }
+            }
+
         val lineDataSet =
             LineDataSet(dataPoints, "Calories (kcal)").apply {
                 color = Color.RED
@@ -197,7 +280,20 @@ fun CaloriesChart(
                 setDrawCircles(true)
                 setDrawValues(false)
             }
-        chart.data = LineData(lineDataSet)
+
+        val trendDataSet =
+            LineDataSet(trendPoints, "Trend").apply {
+                color = Color.GRAY
+                lineWidth = 2f
+                setDrawCircles(false)
+                setDrawValues(false)
+                enableDashedLine(10f, 5f, 0f)
+                setDrawHighlightIndicators(false)
+            }
+
+        val dataSets = mutableListOf(lineDataSet, trendDataSet)
+        goalDataSet?.let { dataSets.add(it) }
+        chart.data = LineData(dataSets as List<ILineDataSet>?)
         chart.invalidate()
     })
 }

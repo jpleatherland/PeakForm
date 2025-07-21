@@ -1,16 +1,13 @@
 package dev.jpleatherland.weighttracker.ui
 
 import android.app.DatePickerDialog
-import android.icu.text.NumberFormat
-import android.icu.util.Calendar
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -36,9 +33,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import dev.jpleatherland.weighttracker.data.GoalTimeMode
+import dev.jpleatherland.weighttracker.data.GoalType
+import dev.jpleatherland.weighttracker.data.RateMode
+import dev.jpleatherland.weighttracker.util.GoalCalculations
+import dev.jpleatherland.weighttracker.util.asDayEpochMillis
 import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
+import java.text.NumberFormat
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -49,14 +51,9 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
     var weight by remember { mutableStateOf("") }
     var calories by remember { mutableStateOf("") }
 
-    // --- Date Picker State ---
     val calendar = remember { Calendar.getInstance() }
-
-    var selectedDate by remember { mutableStateOf(calendar.time) }
-    val formattedDate =
-        remember(selectedDate) {
-            SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(selectedDate)
-        }
+    val today = remember { calendar.time }
+    var selectedDate by remember { mutableStateOf<Date?>(null) }
 
     // --- Find Existing Entry for Date (ignores time, only date) ---
     fun Date.sameDayAs(other: Date): Boolean {
@@ -66,34 +63,64 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
             cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
     }
 
+    LaunchedEffect(entries, selectedDate) {
+        if (selectedDate == null && entries.isNotEmpty()) {
+            val alreadyLoggedToday =
+                entries.any { entry ->
+                    entry.date.let {
+                        Date(it).sameDayAs(today)
+                    }
+                }
+            selectedDate =
+                if (alreadyLoggedToday) null else today
+        }
+    }
+
     val existingEntry =
-        entries.find {
-            it.date?.let { entryDate ->
-                Date(entryDate).sameDayAs(selectedDate)
-            } ?: false
+        selectedDate?.let { nonNullDate ->
+            entries.find {
+                it.date.let { entryDate -> Date(entryDate).sameDayAs(nonNullDate) }
+            }
         }
 
-    // --- If user picks a date with an entry, prefill the fields ---
     LaunchedEffect(existingEntry) {
         if (existingEntry != null) {
             weight = String.format(Locale.getDefault(), "%.2f", existingEntry.weight ?: "")
             calories = existingEntry.calories?.toString() ?: ""
         } else {
-            // Optionally clear fields if you want
-            // weightInput = ""
-            // caloriesInput = ""
+            weight = ""
+            calories = ""
         }
     }
 
     val avgWeight by viewModel.sevenDayAvgWeight.collectAsState()
     val maintenance by viewModel.estimatedMaintenanceCalories.collectAsState()
-    val goalProgress by viewModel.goalProgress.collectAsState()
     val goal by viewModel.goal.collectAsState()
-    val goalTimeMode = goal?.timeMode
+    val goalProgress by viewModel.goalProgress.collectAsState() // If you want to keep using this, fine!
+
+    // Use 7-day avg if present, else last entry, else fallback
+    val currentWeight = avgWeight ?: entries.lastOrNull()?.weight ?: 70.0
+
+    // Set up projection using most recent Goal + current weight and maintenance
+    val projection =
+        GoalCalculations.project(
+            goal = goal,
+            currentWeight = currentWeight,
+            avgMaintenance = maintenance,
+            rateInput =
+                when (goal?.rateMode) {
+                    RateMode.KG_PER_WEEK -> goal?.ratePerWeek?.toString() ?: ""
+                    RateMode.BODYWEIGHT_PERCENT -> goal?.ratePercent?.toString() ?: ""
+                    RateMode.PRESET -> "" // not used
+                    else -> ""
+                },
+            selectedPreset = goal?.ratePreset,
+            durationWeeks = goal?.durationWeeks,
+            targetDate = goal?.targetDate?.let { Date(it) },
+        )
 
     val sdf = SimpleDateFormat("dd/MM", Locale.getDefault())
-
-    Log.d("goalProgress", "Goal Progress: $goalProgress")
+    val numberFormat = NumberFormat.getNumberInstance()
 
     Column(
         modifier =
@@ -118,76 +145,80 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
                 ).show()
             },
         ) {
-            Text("Date: $formattedDate")
+            selectedDate?.let { nonNullDate ->
+                val formattedDate = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(nonNullDate)
+                Text(formattedDate)
+            }
+                ?: Text("Select Date")
         }
-
-        // --- Existing Entry Warning ---
-        if (existingEntry != null) {
-            Card(
+        selectedDate?.let { nonNullDate ->
+            OutlinedTextField(
+                value = weight,
+                onValueChange = { weight = it },
+                label = { Text("Enter weight (kg)") },
+                keyboardOptions =
+                    KeyboardOptions.Default.copy(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Next,
+                    ),
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-            ) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(
-                        "Warning: An entry for this date already exists. Saving will overwrite it.",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        "Current entry: Weight = ${String.format(
-                            Locale.getDefault(),
-                            "%.2f",
-                            existingEntry.weight ?: "-",
-                        )} kg, Calories = ${existingEntry.calories ?: "-"} kcal",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+            )
+
+            OutlinedTextField(
+                value = calories,
+                onValueChange = { calories = it },
+                label = { Text("Enter calories") },
+                keyboardOptions =
+                    KeyboardOptions.Default.copy(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done,
+                    ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            // Existing entry warning
+            existingEntry?.let {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(
+                            "An entry for this date already exists. Saving will overwrite it.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
                 }
+            }
+
+            Button(
+                onClick = {
+                    val w = weight.toDoubleOrNull()
+                    val c = calories.toIntOrNull()
+                    val d = nonNullDate.asDayEpochMillis()
+
+                    if (w != null || c != null) {
+                        viewModel.addEntry(w, c, d) { success ->
+                            if (success) {
+                                Toast.makeText(context, "Entry saved successfully", Toast.LENGTH_SHORT).show()
+                                weight = ""
+                                calories = ""
+                                selectedDate = null
+                            } else {
+                                Log.e("DailyEntryScreen", "Failed to save entry")
+                                Toast.makeText(context, "Failed to save entry", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Save Entry")
             }
         }
 
-        OutlinedTextField(
-            value = weight,
-            onValueChange = { weight = it },
-            label = { Text("Enter weight (kg)") },
-            keyboardOptions =
-                KeyboardOptions.Default.copy(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Next,
-                ),
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        OutlinedTextField(
-            value = calories,
-            onValueChange = { calories = it },
-            label = { Text("Enter calories") },
-            keyboardOptions =
-                KeyboardOptions.Default.copy(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.Done,
-                ),
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Button(
-            onClick = {
-                val w = weight.toDoubleOrNull()
-                val c = calories.toIntOrNull()
-
-                if (w != null || c != null) {
-                    viewModel.addEntry(w, c)
-                    weight = ""
-                    calories = ""
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Save Entry")
-        }
-
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-        val numberFormat = NumberFormat.getNumberInstance()
 
         Column(
             modifier =
@@ -205,62 +236,46 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
                     elevation = CardDefaults.cardElevation(4.dp),
                 ) {
                     Column(Modifier.padding(16.dp)) {
-                        Text(
-                            "7-Day Rolling Average Weight",
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        Text(
-                            text = numberFormat.format(it),
-                            style = MaterialTheme.typography.headlineMedium,
-                        )
+                        Text("7-Day Rolling Average Weight", style = MaterialTheme.typography.labelLarge)
+                        Text(text = numberFormat.format(it), style = MaterialTheme.typography.headlineMedium)
                     }
                 }
+            }
 
+            maintenance?.let {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     elevation = CardDefaults.cardElevation(4.dp),
                 ) {
                     Column(Modifier.padding(16.dp)) {
-                        Text(
-                            "Estimated Maintenance Calories",
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        Text(
-                            text = "$maintenance kcal",
-                            style = MaterialTheme.typography.headlineMedium,
-                        )
+                        Text("Estimated Maintenance Calories", style = MaterialTheme.typography.labelLarge)
+                        Text(text = "$it kcal", style = MaterialTheme.typography.headlineMedium)
                     }
                 }
             }
 
-            goalProgress?.targetCalories?.let {
+            projection.targetCalories?.let {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     elevation = CardDefaults.cardElevation(4.dp),
                 ) {
                     Column(Modifier.padding(16.dp)) {
-                        Text(
-                            "Target Intake for Goal",
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        Text(
-                            text = "$it kcal/day",
-                            style = MaterialTheme.typography.headlineMedium,
-                        )
+                        Text("Target Intake for Goal", style = MaterialTheme.typography.labelLarge)
+                        Text(text = "$it kcal/day", style = MaterialTheme.typography.headlineMedium)
                     }
                 }
             }
 
-            goalProgress?.targetDate?.let {
+            projection.goalDate?.let {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     elevation = CardDefaults.cardElevation(4.dp),
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Row {
-                            Text("Target Date: ", style = MaterialTheme.typography.bodyMedium)
+                            Text("Goal Date: ", style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                text = sdf.format(goalProgress?.targetDate!!),
+                                text = sdf.format(it),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                             )
@@ -269,33 +284,46 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
                 }
             }
 
-            if (goalTimeMode == GoalTimeMode.BY_DATE) {
-                goalProgress?.estimatedGoalDate?.let { estimatedDate ->
+            projection.finalWeight?.let { weight ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(4.dp),
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            text = String.format(Locale.UK, "Estimated Final Weight: %.1f kg", weight),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
+
+            projection.weightChange?.let { change ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(4.dp),
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            text = String.format(Locale.UK, "Estimated Weight Change: %.1f kg", change),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
+
+            // Optional: Show required daily change for bulk/cut/target
+            if (goal?.type == GoalType.CUT || goal?.type == GoalType.BULK || goal?.type == GoalType.TARGET_WEIGHT) {
+                projection.dailyCalories?.let {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         elevation = CardDefaults.cardElevation(4.dp),
                     ) {
                         Column(Modifier.padding(16.dp)) {
-                            Spacer(Modifier.height(4.dp))
-                            Row {
-                                Text(
-                                    "Estimated Date: ",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                                Text(
-                                    text = sdf.format(estimatedDate),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                            goalProgress?.isAheadOfSchedule?.let {
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    text = "You're ahead of schedule!",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                            }
+                            Text(
+                                "Required Daily Calorie Change: $it kcal/day",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
                         }
                     }
                 }

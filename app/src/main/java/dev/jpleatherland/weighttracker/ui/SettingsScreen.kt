@@ -26,6 +26,7 @@ fun SettingsScreen(
 ) {
     val weightUnit by settingsViewModel.weightUnit.collectAsState()
 
+    val isSynching by viewModel.syncInProgress.collectAsState()
     val context = LocalContext.current
     val healthPermissions =
         setOf(
@@ -73,9 +74,12 @@ fun SettingsScreen(
         }
 
         // --- Health Connect Sync ---
-        Button(onClick = {
-            permissionLauncher.launch(healthPermissions)
-        }) {
+        Button(
+            onClick = {
+                permissionLauncher.launch(healthPermissions)
+            },
+            enabled = !isSynching,
+        ) {
             Text("Sync Health Connect")
         }
     }

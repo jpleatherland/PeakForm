@@ -11,14 +11,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.jpleatherland.weighttracker.BuildConfig
 import dev.jpleatherland.weighttracker.data.Goal
+import dev.jpleatherland.weighttracker.data.GoalManager
 import dev.jpleatherland.weighttracker.data.GoalProgress
 import dev.jpleatherland.weighttracker.data.GoalRepository
+import dev.jpleatherland.weighttracker.data.GoalSegmentRepository
+import dev.jpleatherland.weighttracker.data.RateMode
 import dev.jpleatherland.weighttracker.data.WeightDao
 import dev.jpleatherland.weighttracker.data.WeightEntry
 import dev.jpleatherland.weighttracker.data.WeightRepository
 import dev.jpleatherland.weighttracker.util.GoalCalculations
-import dev.jpleatherland.weighttracker.util.GoalCalculations.estimateCalories
-import dev.jpleatherland.weighttracker.util.GoalCalculations.reconstructRateKgPerWeek
+import dev.jpleatherland.weighttracker.util.GoalProjection
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -31,45 +33,18 @@ import java.util.concurrent.TimeUnit
 class WeightViewModel(
     private val repository: WeightRepository,
     private val goalRepository: GoalRepository,
-    val healthConnectClient: HealthConnectClient,
+    private val goalSegmentRepository: GoalSegmentRepository,
+    private val healthConnectClient: HealthConnectClient,
 ) : ViewModel() {
     val entries: StateFlow<List<WeightEntry>> =
         repository
             .getAllEntries()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun addEntry(
-        weight: Double?,
-        calories: Int?,
-    ) {
-        viewModelScope.launch {
-            val entry = WeightEntry(weight = weight, calories = calories)
-            repository.insert(entry)
-        }
-    }
-
-    fun updateEntry(entry: WeightEntry) {
-        viewModelScope.launch {
-            repository.updateEntry(entry)
-        }
-    }
-
     val goal: StateFlow<Goal?> =
         goalRepository
             .getLatestGoal()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-    fun setGoal(goal: Goal) {
-        viewModelScope.launch {
-            goalRepository.insert(goal)
-        }
-    }
-
-    fun clearGoal() {
-        viewModelScope.launch {
-            goalRepository.clearGoal()
-        }
-    }
 
     private val sevenDaysAgo: Long
         get() = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7)
@@ -82,11 +57,7 @@ class WeightViewModel(
                     .mapNotNull { it.weight }
                     .takeIf { it.isNotEmpty() }
                     ?.average()
-            }.stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5000),
-                null,
-            )
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val estimatedMaintenanceCalories: StateFlow<Int?> =
         entries
@@ -109,137 +80,86 @@ class WeightViewModel(
 
                 val avgCalories = recent.mapNotNull { it.calories }.average()
                 (avgCalories - kcalDelta).toInt()
-            }.stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5000),
-                null,
-            )
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    val goalCalories: StateFlow<Int?> =
+    // === NEW: Centralized Projection State ===
+    val goalProjection: StateFlow<GoalProjection?> =
         combine(
             goal,
             estimatedMaintenanceCalories,
             entries,
             sevenDayAvgWeight,
-        ) { goal, maintenance, entriesList, avgWeight ->
-            if (goal == null) return@combine null
-            Log.d("GoalDebug", "goal=$goal, maintenance=$maintenance, entries=${entriesList.size}, avgWeight=$avgWeight")
-            val currentWeight = avgWeight ?: entriesList.lastOrNull()?.weight ?: 0.0
-            val rate = reconstructRateKgPerWeek(goal, currentWeight)
+        ) { goal, maintenance, entryList, avgWeight ->
+            val currentWeight = avgWeight ?: entryList.lastOrNull()?.weight ?: 70.0
 
-            val estimatedGoalDate =
-                GoalCalculations.estimateGoalDate(
-                    currentWeight = currentWeight,
-                    goalWeight = goal.goalWeight,
-                    rateKgPerWeek = rate,
-                    timeMode = goal.timeMode,
-                    goalType = goal.type,
-                )
+            val rateInput =
+                when (goal?.rateMode) {
+                    RateMode.KG_PER_WEEK -> goal.ratePerWeek?.toString() ?: ""
+                    RateMode.BODYWEIGHT_PERCENT -> goal.ratePercent?.toString() ?: ""
+                    RateMode.PRESET -> "" // not used
+                    else -> ""
+                }
 
-            val (total, dailyDelta) =
-                estimateCalories(
-                    goalType = goal.type,
-                    currentWeight = currentWeight,
-                    goalWeight = goal.goalWeight,
-                    durationWeeks = goal.durationWeeks,
-                    estimatedGoalDate = estimatedGoalDate,
-                    targetDate = goal.targetDate?.let { Date(it) },
-                    rateKgPerWeek = rate,
-                    timeMode = goal.timeMode,
-                )
-
-            val result = maintenance?.plus((dailyDelta ?: 0))
-            Log.d("GoalDebug", "goalCalories: total=$total, dailyDelta=$dailyDelta, result=$result")
-            result
+            GoalCalculations.project(
+                goal = goal,
+                currentWeight = currentWeight,
+                avgMaintenance = maintenance,
+                rateInput = rateInput,
+                selectedPreset = goal?.ratePreset,
+                durationWeeks = goal?.durationWeeks,
+                targetDate = goal?.targetDate?.let { Date(it) },
+            )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    // Helper for calculating the user's recent rate of weight change (kg/week)
-    private fun estimateActualRateKgPerWeek(entries: List<WeightEntry>): Double {
-        val recent =
-            entries
-                .filter { it.weight != null }
-                .sortedBy { it.date }
-                .takeLast(14)
-        if (recent.size < 2) return 0.0
-        val first = recent.first()
-        val last = recent.last()
-        val daysBetween = TimeUnit.MILLISECONDS.toDays(last.date - first.date).toDouble()
-        if (daysBetween == 0.0) return 0.0
-        return ((last.weight ?: 0.0) - (first.weight ?: 0.0)) / daysBetween * 7.0
+    // Example: derived flows for compatibility
+    val goalCalories: StateFlow<Int?> =
+        goalProjection
+            .map { it?.targetCalories }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val goalProgress: StateFlow<GoalProgress?> =
+        combine(goalProjection, goal) { projection, goal ->
+            if (projection == null || goal == null) return@combine null
+            GoalProgress(
+                targetCalories = projection.targetCalories ?: 0,
+                estimatedGoalDate = projection.goalDate,
+                targetDate = goal.targetDate?.let { Date(it) },
+                isAheadOfSchedule =
+                    projection.goalDate?.let { estimated ->
+                        goal.targetDate?.let { target -> estimated.before(Date(target)) }
+                    } ?: false,
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    fun addEntry(
+        weight: Double?,
+        calories: Int?,
+        date: Long,
+        onResult: (Boolean) -> Unit,
+    ) {
+        viewModelScope.launch {
+            try {
+                val entry = WeightEntry(weight = weight, calories = calories, date = date)
+                val id = repository.insert(entry)
+                onResult(id > 0)
+            } catch (e: Exception) {
+                Log.e("WeightViewModel", "Error adding entry", e)
+                onResult(false)
+            }
+        }
     }
 
-    // Your main combined flow for progress:
-    val goalProgress: StateFlow<GoalProgress?> =
-        combine(
-            goal,
-            estimatedMaintenanceCalories,
-            entries,
-            sevenDayAvgWeight,
-        ) { goal, maintenanceCalories, entriesList, avgWeight ->
-            if (goal == null || maintenanceCalories == null || entriesList.isEmpty()) return@combine null
+    fun updateEntry(entry: WeightEntry) {
+        viewModelScope.launch { repository.updateEntry(entry) }
+    }
 
-            // Get the current weight (average preferred)
-            val currentWeight = avgWeight ?: entriesList.lastOrNull()?.weight ?: 0.0
+    fun setGoal(goal: Goal) {
+        viewModelScope.launch { goalRepository.insert(goal) }
+    }
 
-            // Get the user's goal weight, or fallback to currentWeight
-            val goalWeight = goal.goalWeight ?: currentWeight
-
-            // Calculate actual recent trend
-            val actualRateKgPerWeek = estimateActualRateKgPerWeek(entriesList)
-
-            // User's intended rate (from UI or goal settings)
-            val targetRateKgPerWeek = reconstructRateKgPerWeek(goal, currentWeight)
-
-            // Estimate date you will reach goal at current trend
-            val estimatedGoalDate: Date? =
-                GoalCalculations.estimateGoalDate(
-                    currentWeight = currentWeight,
-                    goalWeight = goalWeight,
-                    rateKgPerWeek = targetRateKgPerWeek,
-                    timeMode = goal.timeMode,
-                    goalType = goal.type,
-                )
-
-            // Get the target date (nullable)
-            val targetDate: Date? = goal.targetDate?.let { Date(it) }
-
-            // Estimate needed daily calories to hit the goal "on time"
-            val (_, dailyCalories) =
-                estimateCalories(
-                    currentWeight = currentWeight,
-                    goalWeight = goalWeight,
-                    durationWeeks = goal.durationWeeks,
-                    estimatedGoalDate = targetDate, // used only in BY_RATE mode
-                    targetDate = targetDate,
-                    rateKgPerWeek = targetRateKgPerWeek,
-                    timeMode = goal.timeMode,
-                    goalType = goal.type,
-                )
-
-            //  Final target intake: if ahead of schedule, maintain!
-            val isAheadOfSchedule =
-                estimatedGoalDate != null &&
-                    targetDate != null &&
-                    estimatedGoalDate.before(targetDate)
-
-            val targetCalories =
-                if (isAheadOfSchedule || estimatedGoalDate == null) {
-                    maintenanceCalories
-                } else {
-                    maintenanceCalories + (dailyCalories ?: 0)
-                }
-            Log.d(
-                "GoalProgress",
-                "isAheadOfSchedule=$isAheadOfSchedule, estimatedGoalDate=$estimatedGoalDate, targetDate=$targetDate, dailyCalories=$dailyCalories",
-            )
-
-            GoalProgress(
-                targetCalories = targetCalories,
-                estimatedGoalDate = estimatedGoalDate,
-                targetDate = targetDate,
-                isAheadOfSchedule = isAheadOfSchedule,
-            )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    fun clearGoal() {
+        viewModelScope.launch { goalRepository.clearGoal() }
+    }
 
     private val _syncInProgress = MutableStateFlow(false)
     val syncInProgress: StateFlow<Boolean> = _syncInProgress
@@ -290,8 +210,7 @@ class WeightViewModel(
                     nutritionRecords
                         .groupBy { it.startTime.atZone(ZoneId.systemDefault()).toLocalDate() }
                         .mapValues { entry ->
-                            entry.value
-                                .sumOf { it.energy?.inKilocalories?.toInt() ?: 0 }
+                            entry.value.sumOf { it.energy?.inKilocalories?.toInt() ?: 0 }
                         }
 
                 val allDates: Set<LocalDate> = weightByDate.keys + caloriesByDate.keys
@@ -316,6 +235,12 @@ class WeightViewModel(
                 _syncInProgress.value = false
             }
         }
+    }
+
+    private val goalManager = GoalManager(repository, goalRepository, goalSegmentRepository)
+
+    init {
+        goalManager.observeWeightAndAdjustSegments(viewModelScope)
     }
 
     val dao: WeightDao? get() = if (BuildConfig.DEBUG) repository.weightDao else null

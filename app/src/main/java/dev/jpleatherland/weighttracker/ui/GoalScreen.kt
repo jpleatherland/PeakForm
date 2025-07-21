@@ -1,7 +1,7 @@
 package dev.jpleatherland.weighttracker.ui
 
 import android.app.DatePickerDialog
-import android.util.Log
+import android.icu.text.SimpleDateFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,32 +40,28 @@ import dev.jpleatherland.weighttracker.data.RateMode
 import dev.jpleatherland.weighttracker.data.RatePreset
 import dev.jpleatherland.weighttracker.util.GoalCalculations
 import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
-import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-import kotlin.math.abs
 
 @Composable
 fun GoalScreen(viewModel: WeightViewModel) {
     val context = LocalContext.current
     val currentGoal by viewModel.goal.collectAsState()
-    Log.d("GoalDebug", "Current goal: $currentGoal")
     val avgWeight by viewModel.sevenDayAvgWeight.collectAsState()
     val maintenance by viewModel.estimatedMaintenanceCalories.collectAsState()
 
-    Log.d("GoalDebug", "Current goal: $currentGoal")
+    // UI state variables for goal editor
     var goalType by remember { mutableStateOf(GoalType.CUT) }
     var goalWeight by remember { mutableStateOf("") }
-
     var timeMode by remember { mutableStateOf(GoalTimeMode.BY_DURATION) }
     var targetDate by remember { mutableStateOf<Date?>(null) }
-    var ratePerWeek by remember { mutableStateOf("") }
-    var durationWeeks by remember { mutableStateOf("") }
     var rateMode by remember { mutableStateOf(RateMode.PRESET) }
     var rateInput by remember { mutableStateOf("") }
     var selectedPreset by remember { mutableStateOf(RatePreset.LEAN) }
+    var durationWeeks by remember { mutableStateOf("") }
 
+    // On goal change, update form state
     LaunchedEffect(currentGoal) {
         currentGoal?.let { goal ->
             goalType = goal.type
@@ -79,10 +75,8 @@ fun GoalScreen(viewModel: WeightViewModel) {
                 when (rateMode) {
                     RateMode.KG_PER_WEEK -> goal.ratePerWeek?.toString() ?: ""
                     RateMode.BODYWEIGHT_PERCENT -> goal.ratePercent?.toString() ?: ""
-                    RateMode.PRESET -> "" // No text input for preset
+                    RateMode.PRESET -> "" // No input for preset
                 }
-            // This can be left as empty if not relevant
-            ratePerWeek = goal.ratePerWeek?.toString() ?: ""
         }
     }
 
@@ -97,86 +91,58 @@ fun GoalScreen(viewModel: WeightViewModel) {
     val showRateField = timeMode in setOf(GoalTimeMode.BY_RATE, GoalTimeMode.BY_DURATION)
     val showDurationField = timeMode == GoalTimeMode.BY_DURATION
 
+    // Figure out weight (fallback to last logged, then 70)
     val currentWeight =
         avgWeight
             ?: viewModel.entries.value
                 .lastOrNull()
-                ?.weight ?: 70.0 // fallback
+                ?.weight
+            ?: 70.0
 
-    val calculatedRateKgPerWeek: Double =
-        when (rateMode) {
-            RateMode.KG_PER_WEEK -> rateInput.toDoubleOrNull() ?: 0.0
-            RateMode.BODYWEIGHT_PERCENT -> {
-                val percent = rateInput.toDoubleOrNull() ?: 0.0
-                (percent / 100.0) * currentWeight
+    // Centralized calculation/projection!
+    val projection =
+        GoalCalculations.project(
+            goal =
+                currentGoal?.copy(
+                    // Override with live UI state so projections update before saving
+                    type = goalType,
+                    goalWeight = goalWeight.toDoubleOrNull(),
+                    timeMode = timeMode,
+                    targetDate = targetDate?.time,
+                    rateMode = rateMode,
+                    ratePercent = if (rateMode == RateMode.BODYWEIGHT_PERCENT) rateInput.toDoubleOrNull() else null,
+                    ratePreset = if (rateMode == RateMode.PRESET) selectedPreset else null,
+                    durationWeeks = durationWeeks.toIntOrNull(),
+                ) ?: Goal(
+                    type = goalType,
+                    goalWeight = goalWeight.toDoubleOrNull(),
+                    timeMode = timeMode,
+                    targetDate = targetDate?.time,
+                    rateMode = rateMode,
+                    ratePercent = if (rateMode == RateMode.BODYWEIGHT_PERCENT) rateInput.toDoubleOrNull() else null,
+                    ratePreset = if (rateMode == RateMode.PRESET) selectedPreset else null,
+                    ratePerWeek = if (rateMode == RateMode.KG_PER_WEEK) rateInput.toDoubleOrNull() else null,
+                    durationWeeks = durationWeeks.toIntOrNull(),
+                ),
+            currentWeight = currentWeight,
+            avgMaintenance = maintenance,
+            rateInput = rateInput,
+            selectedPreset = selectedPreset,
+            durationWeeks = durationWeeks.toIntOrNull(),
+            targetDate = targetDate,
+        )
+
+    // Determine impossible goal
+    val isImpossibleGoal: Boolean =
+        projection.dailyCalories == null ||
+            when (goalType) {
+                GoalType.CUT -> projection.targetCalories != null && projection.targetCalories < 1000
+                GoalType.BULK -> projection.dailyCalories > 2000
+                GoalType.TARGET_WEIGHT ->
+                    (projection.targetCalories != null && projection.targetCalories < 1000) ||
+                        (projection.dailyCalories > 2000)
+                else -> false
             }
-            RateMode.PRESET -> selectedPreset.percentPerWeek * currentWeight
-        }
-
-    val estimatedGoalDate =
-        GoalCalculations.estimateGoalDate(
-            currentWeight = currentWeight,
-            goalWeight = goalWeight.toDoubleOrNull(),
-            rateKgPerWeek = calculatedRateKgPerWeek,
-            timeMode = timeMode,
-            goalType = goalType,
-        )
-
-    val estimatedRateKgPerWeek =
-        GoalCalculations.estimateRatePerWeek(
-            currentWeight = currentWeight,
-            goalWeight = goalWeight.toDoubleOrNull(),
-            targetDate = targetDate,
-            timeMode = timeMode,
-            goalType = goalType,
-        ) ?: calculatedRateKgPerWeek
-
-    val estimatedFinalWeight =
-        GoalCalculations.estimateFinalWeight(
-            currentWeight = currentWeight,
-            goalType = goalType,
-            timeMode = timeMode,
-            durationWeeks = durationWeeks.toIntOrNull(),
-            rateKgPerWeek = calculatedRateKgPerWeek,
-        )
-
-    val estimatedWeightChange: Double? =
-        when (goalType) {
-            GoalType.CUT, GoalType.BULK ->
-                when {
-                    timeMode == GoalTimeMode.BY_DURATION && durationWeeks.toIntOrNull() != null ->
-                        calculatedRateKgPerWeek * durationWeeks.toInt()
-
-                    timeMode == GoalTimeMode.BY_RATE && goalWeight.toDoubleOrNull() != null ->
-                        abs(goalWeight.toDouble() - currentWeight)
-
-                    timeMode == GoalTimeMode.BY_DATE && targetDate != null && goalWeight.toDoubleOrNull() != null -> {
-                        val delta = abs(goalWeight.toDouble() - currentWeight)
-                        val days = ((targetDate!!.time - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).toInt()
-                        if (days > 0) delta else null
-                    }
-
-                    else -> null
-                }
-            else -> null
-        }
-
-    val (totalCalories, dailyCalories) =
-        GoalCalculations.estimateCalories(
-            currentWeight = currentWeight,
-            goalWeight = goalWeight.toDoubleOrNull(),
-            durationWeeks = durationWeeks.toIntOrNull(),
-            estimatedGoalDate = estimatedGoalDate,
-            targetDate = targetDate,
-            rateKgPerWeek = calculatedRateKgPerWeek,
-            timeMode = timeMode,
-            goalType = goalType,
-        )
-
-    val maintenanceCalories by viewModel.estimatedMaintenanceCalories.collectAsState() // = viewModel.estimatedMaintenanceCalories
-
-    val targetCalories: Int? =
-        maintenanceCalories?.plus(dailyCalories ?: 0)
 
     Column(
         modifier =
@@ -192,10 +158,7 @@ fun GoalScreen(viewModel: WeightViewModel) {
                 elevation = CardDefaults.cardElevation(4.dp),
             ) {
                 Column(Modifier.padding(16.dp)) {
-                    Text(
-                        "7-Day Rolling Average Weight",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
+                    Text("7-Day Rolling Average Weight", style = MaterialTheme.typography.labelLarge)
                     Text(
                         text = String.format(Locale.UK, "%.2f kg", it),
                         style = MaterialTheme.typography.headlineMedium,
@@ -208,11 +171,11 @@ fun GoalScreen(viewModel: WeightViewModel) {
                 }
             }
         }
+
         Spacer(Modifier.height(4.dp))
 
         Text("Set Your Goal", style = MaterialTheme.typography.headlineSmall)
 
-        // Goal Type Dropdown
         DropdownSelector(
             label = "Goal Type",
             options = GoalType.entries,
@@ -229,7 +192,6 @@ fun GoalScreen(viewModel: WeightViewModel) {
             )
         }
 
-        // Time Mode Dropdown
         DropdownSelector(
             label = "Time Mode",
             options = GoalTimeMode.entries,
@@ -269,7 +231,6 @@ fun GoalScreen(viewModel: WeightViewModel) {
                 onSelected = { rateMode = it },
             )
 
-            // Then the corresponding input for the selected mode
             when (rateMode) {
                 RateMode.KG_PER_WEEK -> {
                     OutlinedTextField(
@@ -307,15 +268,6 @@ fun GoalScreen(viewModel: WeightViewModel) {
             )
         }
 
-        val isImpossibleGoal: Boolean =
-            dailyCalories == null ||
-                when (goalType) {
-                    GoalType.CUT -> targetCalories!! < 1000
-                    GoalType.BULK -> dailyCalories > 2000
-                    GoalType.TARGET_WEIGHT -> targetCalories!! < 1000 || dailyCalories > 2000
-                    else -> false
-                }
-
         if (isImpossibleGoal) {
             Text(
                 "This goal is not possible, is ill advised or is possibly unsafe. Please adjust your target weight, rate, or time frame.",
@@ -325,7 +277,6 @@ fun GoalScreen(viewModel: WeightViewModel) {
             )
         }
 
-        // Save Goal Button
         Button(
             onClick = {
                 val goal =
@@ -334,13 +285,7 @@ fun GoalScreen(viewModel: WeightViewModel) {
                         type = goalType,
                         timeMode = timeMode,
                         targetDate = targetDate?.time,
-                        ratePerWeek =
-                            when (rateMode) {
-                                RateMode.KG_PER_WEEK -> rateInput.toDoubleOrNull()
-                                RateMode.BODYWEIGHT_PERCENT -> null // We'll reconstruct from percent + weight
-                                RateMode.PRESET -> null // We'll reconstruct from preset + weight
-                                else -> null
-                            },
+                        ratePerWeek = if (rateMode == RateMode.KG_PER_WEEK) rateInput.toDoubleOrNull() else null,
                         durationWeeks = durationWeeks.toIntOrNull(),
                         rateMode = rateMode,
                         ratePercent = if (rateMode == RateMode.BODYWEIGHT_PERCENT) rateInput.toDoubleOrNull() else null,
@@ -348,38 +293,39 @@ fun GoalScreen(viewModel: WeightViewModel) {
                     )
                 viewModel.setGoal(goal)
             },
-            enabled = !isImpossibleGoal && goalWeight.isNotBlank() && (timeMode != GoalTimeMode.BY_DURATION || durationWeeks.isNotBlank()),
+            enabled =
+                !isImpossibleGoal &&
+                    (!needsGoalWeight || goalWeight.isNotBlank()) &&
+                    (timeMode != GoalTimeMode.BY_DURATION || durationWeeks.isNotBlank()),
         ) {
             Text("Save Goal")
         }
 
-        targetCalories?.let {
+        // === PROJECTIONS ===
+
+        projection.targetCalories?.let {
             Text("Estimated Daily Calorie Target: $it kcal/day", style = MaterialTheme.typography.bodyMedium)
         }
-
-        estimatedGoalDate?.let { date ->
+        projection.goalDate?.let { date ->
             Text(
                 text = "Estimated Goal Date: ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(date)}",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
-
-        estimatedFinalWeight?.let { weight ->
+        projection.finalWeight?.let { weight ->
             Text(
                 text = String.format(Locale.UK, "Estimated Final Weight: %.1f kg", weight),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
-
-        estimatedWeightChange?.let { change ->
+        projection.weightChange?.let { change ->
             Text(
                 text = String.format(Locale.UK, "Estimated Weight Change: %.1f kg", change),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
-
         if (goalType == GoalType.CUT || goalType == GoalType.BULK || goalType == GoalType.TARGET_WEIGHT) {
-            dailyCalories?.let {
+            projection.dailyCalories?.let {
                 Text("Required Daily Calorie Change: $it kcal/day", style = MaterialTheme.typography.bodyMedium)
             }
         }

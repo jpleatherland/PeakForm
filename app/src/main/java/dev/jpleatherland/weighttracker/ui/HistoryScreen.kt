@@ -2,7 +2,6 @@
 
 package dev.jpleatherland.weighttracker.ui
 
-import android.app.DatePickerDialog
 import android.icu.text.NumberFormat
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -129,50 +128,10 @@ fun EditEntryDialog(
         dismissButton = {
             OutlinedButton(onClick = onDismiss) { Text("Cancel") }
         },
-        title = { Text("Edit Entry") },
+        title = { Text("Edit Entry for ${SimpleDateFormat("dd MMM yyyy", Locale.UK).format(selectedDate)}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Date Picker
-                OutlinedButton(onClick = {
-                    DatePickerDialog(
-                        context,
-                        { _, year, month, dayOfMonth ->
-                            calendar.set(year, month, dayOfMonth)
-                            selectedDate = calendar.time.time
-                        },
-                        calendar.get(Calendar.YEAR),
-                        calendar.get(Calendar.MONTH),
-                        calendar.get(Calendar.DAY_OF_MONTH),
-                    ).show()
-                }) {
-                    Text("Date: ${SimpleDateFormat("dd MMM yyyy", Locale.UK).format(selectedDate)}")
-                }
-
                 // Weight Picker
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Whole")
-                        NumberPicker(
-                            value = weightWhole,
-                            range = 20..200,
-                            onValueChange = { weightWhole = it },
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Decimal")
-                        NumberPicker(
-                            value = weightDecimal,
-                            range = 0..9,
-                            onValueChange = { weightDecimal = it },
-                        )
-                    }
-                }
-
                 OutlinedTextField(
                     value = weightInput,
                     onValueChange = { input ->
@@ -193,7 +152,7 @@ fun EditEntryDialog(
                             weightDecimal = ((newWeight * 10) % 10).toInt()
                         }
                     },
-                    label = { Text("Manual Weight Entry") },
+                    label = { Text("Weight") },
                     keyboardOptions =
                         KeyboardOptions.Default.copy(
                             keyboardType = KeyboardType.Number,
@@ -211,47 +170,4 @@ fun EditEntryDialog(
             }
         },
     )
-}
-
-@Composable
-fun NumberPicker(
-    value: Int,
-    range: IntRange,
-    onValueChange: (Int) -> Unit,
-) {
-    var internalValue by remember { mutableStateOf(value) }
-
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        OutlinedButton(
-            onClick = {
-                if (internalValue < range.last) {
-                    internalValue += 1
-                    onValueChange(internalValue)
-                }
-            },
-            contentPadding = PaddingValues(2.dp),
-            modifier = Modifier.size(32.dp),
-        ) {
-            Text("▲")
-        }
-
-        Spacer(modifier = Modifier.height(8.dp)) // 👈 add space above number
-
-        Text("$internalValue", style = MaterialTheme.typography.bodyLarge)
-
-        Spacer(modifier = Modifier.height(8.dp)) // 👈 add space above number
-
-        OutlinedButton(
-            onClick = {
-                if (internalValue > range.first) {
-                    internalValue -= 1
-                    onValueChange(internalValue)
-                }
-            },
-            contentPadding = PaddingValues(2.dp),
-            modifier = Modifier.size(32.dp),
-        ) {
-            Text("▼")
-        }
-    }
 }

@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit
 class WeightViewModel(
     private val repository: WeightRepository,
     private val goalRepository: GoalRepository,
-    private val goalSegmentRepository: GoalSegmentRepository,
+    val goalSegmentRepository: GoalSegmentRepository,
     private val healthConnectClient: HealthConnectClient,
 ) : ViewModel() {
     val entries: StateFlow<List<WeightEntry>> =
@@ -237,7 +237,7 @@ class WeightViewModel(
         }
     }
 
-    private val goalManager = GoalManager(repository, goalRepository, goalSegmentRepository)
+    private val goalManager = GoalManager(repository, goalRepository, goalSegmentRepository, estimatedMaintenanceCalories)
 
     init {
         goalManager.observeWeightAndAdjustSegments(viewModelScope)

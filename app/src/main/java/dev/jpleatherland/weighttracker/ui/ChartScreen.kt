@@ -15,7 +15,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -301,5 +303,15 @@ fun CaloriesChart(
 @Composable
 fun ChartScreen(viewModel: WeightViewModel) {
     val entries by viewModel.entries.collectAsState()
+    val goal by viewModel.goal.collectAsState()
+
+    val segments by remember(goal) {
+        derivedStateOf {
+            viewModel.goal?.value?.id?.let { id ->
+                viewModel.goalSegmentRepository.getAllSegmentsForGoal(id)
+            } ?: emptyList()
+        }
+    }
+
     ChartLayout(entries = entries)
 }

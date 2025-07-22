@@ -15,9 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -28,13 +26,22 @@ import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
+import dev.jpleatherland.weighttracker.data.Goal
+import dev.jpleatherland.weighttracker.data.GoalSegment
 import dev.jpleatherland.weighttracker.data.WeightEntry
+import dev.jpleatherland.weighttracker.util.GoalProjection
 import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 @Composable
-fun ChartLayout(entries: List<WeightEntry>) {
+fun ChartLayout(
+    entries: List<WeightEntry>,
+    goal: Goal?,
+    segments: List<GoalSegment>,
+    projection: GoalProjection?,
+) {
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
@@ -54,6 +61,9 @@ fun ChartLayout(entries: List<WeightEntry>) {
             Text("Weight Over Time", style = MaterialTheme.typography.titleMedium)
             WeightChart(
                 entries = entries,
+                goal = goal,
+                segments = segments,
+                projection = projection,
                 modifier =
                     chartModifier
                         .height(200.dp)
@@ -81,6 +91,9 @@ fun ChartLayout(entries: List<WeightEntry>) {
                 Text("Weight", style = MaterialTheme.typography.titleMedium)
                 WeightChart(
                     entries = entries,
+                    goal = goal,
+                    segments = segments,
+                    projection = projection,
                     modifier =
                         Modifier
                             .fillMaxSize()
@@ -104,10 +117,13 @@ fun ChartLayout(entries: List<WeightEntry>) {
 @Composable
 fun WeightChart(
     entries: List<WeightEntry>,
-    goalWeight: Double? = null,
+    goal: Goal?,
+    segments: List<GoalSegment>,
+    projection: GoalProjection?,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
+
     AndroidView(factory = { context ->
         LineChart(context).apply {
             val chartHeightDp = 300.dp
@@ -124,47 +140,21 @@ fun WeightChart(
             xAxis.granularity = 1f
             xAxis.valueFormatter =
                 object : ValueFormatter() {
-                    @SuppressLint("ConstantLocale")
                     private val sdf = SimpleDateFormat("dd/MM", Locale.getDefault())
 
-                    override fun getFormattedValue(value: Float): String = sdf.format(Date(value.toLong()))
+                    override fun getFormattedValue(value: Float): String = sdf.format(Date(TimeUnit.DAYS.toMillis(value.toLong())))
                 }
         }
     }, update = { chart ->
+
+        // --- ACTUAL WEIGHT ENTRIES ---
         val dataPoints =
             entries
                 .filter { it.weight != null }
                 .sortedBy { it.date }
                 .map {
-                    Entry(it.date.toFloat(), it.weight!!.toFloat())
+                    Entry(TimeUnit.MILLISECONDS.toDays(it.date).toFloat(), it.weight!!.toFloat())
                 }
-
-        // Trend line calculation
-        val trendPoints = calculateTrendLine(dataPoints)
-
-        val goalDataSet =
-            goalWeight?.let { gw ->
-                if (dataPoints.isNotEmpty()) {
-                    val goalEntries =
-                        listOf(
-                            Entry(dataPoints.first().x, gw.toFloat()),
-                            Entry(dataPoints.last().x, gw.toFloat()),
-                        )
-                    LineDataSet(
-                        goalEntries,
-                        "Goal",
-                    ).apply {
-                        color = Color.GREEN
-                        lineWidth = 2f
-                        setDrawCircles(false)
-                        setDrawValues(false)
-                        enableDashedLine(10f, 5f, 0f)
-                        setDrawHighlightIndicators(false)
-                    }
-                } else {
-                    null
-                }
-            }
 
         val lineDataSet =
             LineDataSet(dataPoints, "Weight (kg)").apply {
@@ -174,8 +164,11 @@ fun WeightChart(
                 setDrawValues(false)
             }
 
+        // Trend line calculation (linear regression through actual data)
+        val trendPoints = calculateTrendLine(dataPoints)
+
         val trendDataSet =
-            LineDataSet(trendPoints, "Trend").apply {
+            LineDataSet(trendPoints, "Actual Trend").apply {
                 color = Color.GRAY
                 lineWidth = 2f
                 setDrawCircles(false)
@@ -184,12 +177,79 @@ fun WeightChart(
                 setDrawHighlightIndicators(false)
             }
 
-        val dataSets = mutableListOf(lineDataSet, trendDataSet)
-        goalDataSet?.let { dataSets.add(it) }
-        chart.data = LineData(dataSets as List<ILineDataSet>?)
+        // --- GOAL PROJECTION/SEGMENTED TREND LINE ---
+        val goalProjectionPoints =
+            if (goal != null && projection != null) {
+                buildGoalProjectionEntries(goal, segments, entries, projection)
+            } else {
+                emptyList()
+            }
 
+        val projectionDataSet =
+            LineDataSet(goalProjectionPoints, "Goal Projection").apply {
+                color = Color.GREEN
+                lineWidth = 2f
+                setDrawCircles(false)
+                setDrawValues(false)
+                enableDashedLine(10f, 5f, 0f)
+                setDrawHighlightIndicators(false)
+            }
+
+        val dataSets = mutableListOf<ILineDataSet>(lineDataSet, projectionDataSet, trendDataSet)
+        chart.data = LineData(dataSets)
         chart.invalidate()
     })
+}
+
+fun buildGoalProjectionEntries(
+    goal: Goal,
+    segments: List<GoalSegment>,
+    entries: List<WeightEntry>,
+    projection: GoalProjection?,
+): List<Entry> {
+    if (projection == null) return emptyList()
+
+    val firstWeightEntry = entries.firstOrNull { it.weight != null }
+    val startWeight = firstWeightEntry?.weight ?: return emptyList()
+    val startDate = firstWeightEntry.date
+
+    val allSegments = segments.sortedBy { it.startDate }
+    val entriesList = mutableListOf<Entry>()
+
+    fun toChartX(millis: Long) = TimeUnit.MILLISECONDS.toDays(millis).toFloat()
+
+    entriesList.add(Entry(toChartX(startDate), startWeight.toFloat()))
+
+    if (allSegments.isEmpty()) {
+        val endDate = projection.goalDate?.time ?: goal.targetDate ?: (startDate + TimeUnit.DAYS.toMillis(90))
+        val endWeight = projection.finalWeight ?: goal.goalWeight ?: startWeight
+        entriesList.add(Entry(toChartX(endDate), endWeight.toFloat()))
+        return entriesList
+    }
+
+    var prevDate = startDate
+    var prevWeight = startWeight
+
+    for (segment in allSegments) {
+        // To segment start
+        if (segment.startDate > prevDate) {
+            entriesList.add(Entry(toChartX(segment.startDate), segment.startWeight.toFloat()))
+        }
+        // To segment end
+        entriesList.add(Entry(toChartX(segment.endDate), segment.endWeight.toFloat()))
+        prevDate = segment.endDate
+        prevWeight = segment.endWeight
+    }
+
+    val finalTargetDate =
+        projection.goalDate?.time ?: goal.targetDate ?: (prevDate + TimeUnit.DAYS.toMillis(90))
+    val finalTargetWeight = projection.finalWeight ?: goal.goalWeight ?: prevWeight
+
+    if (finalTargetDate > prevDate) {
+        entriesList.add(Entry(toChartX(finalTargetDate), finalTargetWeight.toFloat()))
+    }
+
+    return entriesList
 }
 
 // Helper for linear regression
@@ -305,13 +365,10 @@ fun ChartScreen(viewModel: WeightViewModel) {
     val entries by viewModel.entries.collectAsState()
     val goal by viewModel.goal.collectAsState()
 
-    val segments by remember(goal) {
-        derivedStateOf {
-            viewModel.goal?.value?.id?.let { id ->
-                viewModel.goalSegmentRepository.getAllSegmentsForGoal(id)
-            } ?: emptyList()
-        }
-    }
+    val segments by viewModel.goalSegments.collectAsState()
+    val goalProjection by viewModel.goalProjection.collectAsState()
 
-    ChartLayout(entries = entries)
+    val entriesAsc = entries.sortedBy { it.date }
+
+    ChartLayout(entries = entriesAsc, goal = goal, segments = segments, projection = goalProjection)
 }

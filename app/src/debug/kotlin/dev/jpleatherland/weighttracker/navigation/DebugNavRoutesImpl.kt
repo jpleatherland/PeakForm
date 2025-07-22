@@ -9,9 +9,9 @@ import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
 fun appNavHost_addDebugRoutes_internal(
     navController: NavHostController,
     viewModel: WeightViewModel,
-    builder: NavGraphBuilder
+    builder: NavGraphBuilder,
 ) {
     builder.composable("debug") {
-        DebugScreen(viewModel.dao!!)
+        DebugScreen(viewModel.dao!!, viewModel.goalDao!!)
     }
 }

@@ -12,4 +12,6 @@ class GoalRepository(
     suspend fun clearGoal() {
         goalDao.clearGoal()
     }
+
+    val dao: GoalDao get() = goalDao
 }

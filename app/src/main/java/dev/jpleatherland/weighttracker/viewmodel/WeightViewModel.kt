@@ -11,9 +11,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.jpleatherland.weighttracker.BuildConfig
 import dev.jpleatherland.weighttracker.data.Goal
+import dev.jpleatherland.weighttracker.data.GoalDao
 import dev.jpleatherland.weighttracker.data.GoalManager
 import dev.jpleatherland.weighttracker.data.GoalProgress
 import dev.jpleatherland.weighttracker.data.GoalRepository
+import dev.jpleatherland.weighttracker.data.GoalSegment
 import dev.jpleatherland.weighttracker.data.GoalSegmentRepository
 import dev.jpleatherland.weighttracker.data.RateMode
 import dev.jpleatherland.weighttracker.data.WeightDao
@@ -21,6 +23,7 @@ import dev.jpleatherland.weighttracker.data.WeightEntry
 import dev.jpleatherland.weighttracker.data.WeightRepository
 import dev.jpleatherland.weighttracker.util.GoalCalculations
 import dev.jpleatherland.weighttracker.util.GoalProjection
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -37,6 +40,11 @@ class WeightViewModel(
     private val healthConnectClient: HealthConnectClient,
 ) : ViewModel() {
     val entries: StateFlow<List<WeightEntry>> =
+        repository
+            .getAllEntries()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val entriesAsc: StateFlow<List<WeightEntry>> =
         repository
             .getAllEntries()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -243,5 +251,19 @@ class WeightViewModel(
         goalManager.observeWeightAndAdjustSegments(viewModelScope)
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val goalSegments: StateFlow<List<GoalSegment>> =
+        goal
+            .flatMapLatest { goalOrNull ->
+                goalOrNull?.let { goalSegmentRepository.getAllSegmentsForGoal(it.id) }
+                    ?: flowOf(emptyList())
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val dao: WeightDao? get() = if (BuildConfig.DEBUG) repository.weightDao else null
+    val goalDao: GoalDao? get() = if (BuildConfig.DEBUG) goalRepository.dao else null
+
+    fun deleteWeightEntry(entry: WeightEntry) =
+        viewModelScope.launch {
+            repository.deleteEntry(entry)
+        }
 }

@@ -15,6 +15,9 @@ interface WeightDao {
     @Query("SELECT * FROM WeightEntry ORDER BY date DESC")
     fun getAllEntries(): Flow<List<WeightEntry>>
 
+    @Query("SELECT * FROM WeightEntry ORDER BY date ASC")
+    fun getAllEntriesAscending(): Flow<List<WeightEntry>>
+
     @Query("SELECT * FROM WeightEntry WHERE date >= :since ORDER BY date DESC")
     fun getEntriesSince(since: Long): Flow<List<WeightEntry>>
 
@@ -23,6 +26,9 @@ interface WeightDao {
 
     @Query("DELETE FROM WeightEntry")
     suspend fun deleteAll()
+
+    @Query("DELETE FROM WeightEntry WHERE id = :id")
+    suspend fun deleteById(id: Int)
 
     @Update
     suspend fun update(entry: WeightEntry)

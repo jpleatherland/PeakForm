@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -56,6 +58,15 @@ fun HistoryScreen(viewModel: WeightViewModel) {
                                 .clickable { editingEntry = entry }
                                 .padding(8.dp),
                     )
+                    IconButton(
+                        onClick = { viewModel.deleteWeightEntry(entry) },
+                        modifier = Modifier.padding(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete Entry",
+                        )
+                    }
                 }
             }
         }

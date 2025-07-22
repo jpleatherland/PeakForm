@@ -1,11 +1,12 @@
 package dev.jpleatherland.weighttracker.data
 
 import androidx.room.*
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface GoalSegmentDao {
     @Query("SELECT * FROM goal_segment WHERE goalId = :goalId ORDER BY startDate")
-    suspend fun getAllSegmentsForGoal(goalId: Int): List<GoalSegment>
+    fun getAllSegmentsForGoal(goalId: Int): Flow<List<GoalSegment>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(segment: GoalSegment): Long

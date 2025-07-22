@@ -9,9 +9,12 @@ import androidx.compose.ui.unit.dp
 import dev.jpleatherland.weighttracker.data.GoalDao
 import dev.jpleatherland.weighttracker.data.WeightDao
 import dev.jpleatherland.weighttracker.dev.*
+import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun DebugScreen(
+    viewModel: WeightViewModel,
     dao: WeightDao,
     goalDao: GoalDao,
 ) {
@@ -29,29 +32,34 @@ fun DebugScreen(
         Text("Generate Test Data:")
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = {
-                generateTestData(scope, dao, goalDao, TestDataType.TRENDING_UP)
+                generateTestData(scope, dao, goalDao, TestDataType.TRENDING_UP, viewModel)
             }) {
                 Text("Trend Up")
             }
             Button(onClick = {
-                generateTestData(scope, dao, goalDao, TestDataType.TRENDING_DOWN)
+                generateTestData(scope, dao, goalDao, TestDataType.TRENDING_DOWN, viewModel)
             }) {
                 Text("Trend Down")
             }
             Button(onClick = {
-                generateTestData(scope, dao, goalDao, TestDataType.CUT_WITH_JUMP)
+                generateTestData(scope, dao, goalDao, TestDataType.CUT_WITH_JUMP, viewModel)
             }) {
                 Text("Cut with Jump")
             }
             Button(onClick = {
-                generateTestData(scope, dao, goalDao, TestDataType.BULK_WITH_JUMP)
+                generateTestData(scope, dao, goalDao, TestDataType.BULK_WITH_JUMP, viewModel)
             }) {
                 Text("Bulk with Jump")
             }
             Button(onClick = {
-                generateTestData(scope, dao, goalDao, TestDataType.RANDOM)
+                generateTestData(scope, dao, goalDao, TestDataType.RANDOM, viewModel)
             }) {
                 Text("Random")
+            }
+            Button(onClick = {
+                generateTestData(scope, dao, goalDao, TestDataType.BULK_WITH_JUMP_BY_DATE, viewModel)
+            }) {
+                Text("Bulk with Jump by Date")
             }
         }
 
@@ -59,8 +67,9 @@ fun DebugScreen(
 
         Button(
             onClick = {
-                wipeAllData(scope, dao)
-                wipeGoalData(scope, goalDao)
+                scope.launch {
+                    viewModel.resetAllData()
+                }
             },
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
         ) {

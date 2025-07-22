@@ -17,5 +17,7 @@ class WeightRepository(
 
     suspend fun deleteEntry(entry: WeightEntry) = dao.deleteById(entry.id)
 
+    suspend fun deleteAllEntries() = dao.deleteAll()
+
     val weightDao: WeightDao get() = dao
 }

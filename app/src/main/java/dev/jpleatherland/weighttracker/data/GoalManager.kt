@@ -1,11 +1,12 @@
 package dev.jpleatherland.weighttracker.data
 
+import android.util.Log
 import dev.jpleatherland.weighttracker.data.Goal
 import dev.jpleatherland.weighttracker.util.GoalCalculations
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.coroutines.launch
 
@@ -16,28 +17,38 @@ class GoalManager(
     private val maintenanceCalories: StateFlow<Int?>,
 ) {
     fun observeWeightAndAdjustSegments(scope: CoroutineScope) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch {
             combine(
                 weightRepository.getAllEntries(),
-                goalRepository.getLatestGoal(),
                 maintenanceCalories,
-            ) { entries, goal, maintenance ->
-                Triple(entries, goal, maintenance)
-            }.collect { (entries, goal, maintenance) ->
-                if (goal == null || entries.isEmpty() || maintenance == null) return@collect
+            ) { entries, maintenance ->
+                Pair(entries, maintenance)
+            }.collect { (entries, maintenance) ->
+                val goal = goalRepository.getLatestGoal().value
+                goal?.let {
+                    val newSegment = GoalCalculations.maybeGenerateCorrectionSegment(it, entries, maintenance, goalSegmentRepository)
+                    val lastSegment = goalSegmentRepository.getAllSegmentsForGoal(goal.id).firstOrNull()?.lastOrNull()
 
-                val segments =
-                    goalSegmentRepository
-                        .getAllSegmentsForGoal(goal.id)
-                val activeSegment = segments.lastOrNull() ?: return@collect
-                val avgWeight = entries.mapNotNull { it.weight }.averageOrNull() ?: return@collect
-                val recentEntries = entries.takeLast(14)
-                val avgCalories = recentEntries.mapNotNull { it.calories }.averageIntOrNull() ?: return@collect
+                    // Utility to compare segments:
+                    fun segmentsAreEqual(
+                        a: GoalSegment?,
+                        b: GoalSegment?,
+                    ): Boolean {
+                        if (a == null || b == null) return false
+                        return a.startDate == b.startDate &&
+                            a.endDate == b.endDate &&
+                            a.startWeight == b.startWeight &&
+                            a.endWeight == b.endWeight
+                    }
 
-                val newSegment = GoalCalculations.generateSegment(goal, entries, maintenance)
-
-                newSegment?.let {
-                    goalSegmentRepository.insert(newSegment)
+                    // Only insert if not a duplicate
+                    if (newSegment != null && !segmentsAreEqual(newSegment, lastSegment)) {
+                        Log.d("GoalManager", "Inserting corrective segment: $newSegment")
+                        Log.d("GoalManager", "Last segment: $lastSegment Goal ID: ${goal.id}")
+                        goalSegmentRepository.insert(newSegment)
+                    } else {
+                        Log.d("GoalManager", "Not inserting segment (duplicate or unnecessary)")
+                    }
                 }
             }
         }

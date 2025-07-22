@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit
 class WeightViewModel(
     private val repository: WeightRepository,
     private val goalRepository: GoalRepository,
-    val goalSegmentRepository: GoalSegmentRepository,
+    private val goalSegmentRepository: GoalSegmentRepository,
     private val healthConnectClient: HealthConnectClient,
 ) : ViewModel() {
     val entries: StateFlow<List<WeightEntry>> =
@@ -147,6 +147,7 @@ class WeightViewModel(
     ) {
         viewModelScope.launch {
             try {
+                Log.d("Debug", "App DB instance: ${dao.hashCode()}")
                 val entry = WeightEntry(weight = weight, calories = calories, date = date)
                 val id = repository.insert(entry)
                 onResult(id > 0)
@@ -266,4 +267,10 @@ class WeightViewModel(
         viewModelScope.launch {
             repository.deleteEntry(entry)
         }
+
+    suspend fun resetAllData() {
+        goalRepository.clearGoal()
+        goalSegmentRepository.clearAllGoalSegments()
+        repository.deleteAllEntries()
+    }
 }

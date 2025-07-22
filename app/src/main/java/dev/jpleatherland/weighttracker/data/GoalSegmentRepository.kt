@@ -9,5 +9,7 @@ class GoalSegmentRepository(
 
     fun getAllSegmentsForGoal(goalId: Int): Flow<List<GoalSegment>> = dao.getAllSegmentsForGoal(goalId)
 
+    suspend fun clearAllGoalSegments() = dao.clearAllGoalSegments()
+
 //    fun getLatestSegmentForGoal(goalId: Int) = dao.getLatestSegmentForGoal(goalId)
 }

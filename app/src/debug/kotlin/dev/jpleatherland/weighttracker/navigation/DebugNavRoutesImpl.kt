@@ -12,6 +12,6 @@ fun appNavHost_addDebugRoutes_internal(
     builder: NavGraphBuilder,
 ) {
     builder.composable("debug") {
-        DebugScreen(viewModel.dao!!, viewModel.goalDao!!)
+        DebugScreen(viewModel, viewModel.dao!!, viewModel.goalDao!!)
     }
 }

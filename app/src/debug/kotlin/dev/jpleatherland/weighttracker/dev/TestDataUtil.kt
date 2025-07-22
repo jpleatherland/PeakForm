@@ -1,5 +1,6 @@
 package dev.jpleatherland.weighttracker.dev
 
+import android.util.Log
 import dev.jpleatherland.weighttracker.data.Goal
 import dev.jpleatherland.weighttracker.data.GoalDao
 import dev.jpleatherland.weighttracker.data.GoalTimeMode
@@ -7,7 +8,10 @@ import dev.jpleatherland.weighttracker.data.GoalType
 import dev.jpleatherland.weighttracker.data.RateMode
 import dev.jpleatherland.weighttracker.data.WeightDao
 import dev.jpleatherland.weighttracker.data.WeightEntry
+import dev.jpleatherland.weighttracker.util.toEpochMillis
+import dev.jpleatherland.weighttracker.viewmodel.WeightViewModel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
@@ -19,6 +23,7 @@ enum class TestDataType {
     RANDOM,
     BULK_WITH_JUMP,
     CUT_WITH_JUMP,
+    BULK_WITH_JUMP_BY_DATE,
 }
 
 fun generateTestData(
@@ -26,6 +31,7 @@ fun generateTestData(
     dao: WeightDao,
     goalDao: GoalDao,
     type: TestDataType,
+    viewModel: WeightViewModel,
 ) {
     scope.launch {
         val today = LocalDate.now()
@@ -67,6 +73,17 @@ fun generateTestData(
                         rateMode = null,
                         createdAt = startDateMillis,
                     )
+                TestDataType.BULK_WITH_JUMP_BY_DATE ->
+                    Goal(
+                        goalWeight = 80.0,
+                        type = GoalType.BULK,
+                        timeMode = GoalTimeMode.BY_DATE,
+                        targetDate = startDate.plusDays(60).toEpochMillis(),
+                        ratePerWeek = null,
+                        durationWeeks = null,
+                        rateMode = null,
+                        createdAt = startDateMillis,
+                    )
             }
         goalDao.insert(
             goal,
@@ -97,29 +114,24 @@ fun generateTestData(
                             }
                         }
                         TestDataType.RANDOM -> 70.0 + Random.nextDouble(-1.5, 1.5)
+                        TestDataType.BULK_WITH_JUMP_BY_DATE -> {
+                            // Steady increase, then a big drop
+                            if (i < 15) {
+                                68.0 + (i * 0.1) + Random.nextDouble(-0.2, 0.2)
+                            } else {
+                                61.0 + ((i - 15) * 0.3) + Random.nextDouble(-0.3, 0.3)
+                            }
+                        }
                     }
                 val calories = 2500 + Random.nextInt(-400, 400)
                 WeightEntry(date = dateMillis, weight = weight, calories = calories)
             }
 
-        dao.insertAll(entries)
-    }
-}
-
-fun wipeAllData(
-    scope: CoroutineScope,
-    dao: WeightDao,
-) {
-    scope.launch {
-        dao.deleteAll()
-    }
-}
-
-fun wipeGoalData(
-    scope: CoroutineScope,
-    goalDao: GoalDao,
-) {
-    scope.launch {
-        goalDao.clearGoal()
+        for ((i, entry) in entries.withIndex()) {
+            viewModel.addEntry(entry.weight, entry.calories, entry.date) {}
+            Log.d("TestDataUtil", "Inserting entry $i of ${entries.size}")
+            dao.insert(entry)
+            delay(50)
+        }
     }
 }

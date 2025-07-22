@@ -28,6 +28,7 @@ data class GoalSegment(
     val createdAt: Long = System.currentTimeMillis(),
     val notes: String? = null,
     val targetCalories: Int,
+    val ratePerWeek: Double,
 )
 
 enum class SegmentSource {

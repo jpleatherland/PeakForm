@@ -2,16 +2,17 @@ package dev.jpleatherland.weighttracker.util
 
 import dev.jpleatherland.weighttracker.data.Goal
 import dev.jpleatherland.weighttracker.data.GoalSegment
+import dev.jpleatherland.weighttracker.data.GoalSegmentRepository
 import dev.jpleatherland.weighttracker.data.GoalTimeMode
 import dev.jpleatherland.weighttracker.data.GoalType
 import dev.jpleatherland.weighttracker.data.RateMode
 import dev.jpleatherland.weighttracker.data.RatePreset
 import dev.jpleatherland.weighttracker.data.WeightEntry
 import dev.jpleatherland.weighttracker.util.asDayEpochMillis
-import java.time.Instant
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.lastOrNull
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 import java.util.Date
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
@@ -172,69 +173,90 @@ object GoalCalculations {
         )
     }
 
-    fun generateSegment(
+    suspend fun maybeGenerateCorrectionSegment(
         goal: Goal,
         entries: List<WeightEntry>,
         estimatedMaintenance: Int?,
-        rateInput: String = "",
-        selectedPreset: RatePreset? = null,
-        durationWeeks: Int? = null,
-        targetDate: Date? = null,
-        today: LocalDate = LocalDate.now(),
+        goalSegmentRepository: GoalSegmentRepository,
     ): GoalSegment? {
         val goalId = goal.id ?: return null
 
-        // 1. Gather data for projection
+        // 1. Get last correction segment, if any
+        val lastSegment =
+            goalSegmentRepository
+                .getAllSegmentsForGoal(goalId)
+                .firstOrNull()
+                ?.lastOrNull()
+
+        // 2. Find the base date and weight
+        val baseDate: Long
+        val baseWeight: Double
+        if (lastSegment == null) {
+            baseDate = entries.minByOrNull { it.date }?.date ?: return null
+            baseWeight = entries.firstOrNull { it.weight != null }?.weight ?: return null
+        } else {
+            baseDate = lastSegment.endDate
+            baseWeight = lastSegment.endWeight
+        }
+
+        // 3. Find all entries after the base date (with weight/calories)
         val recent =
             entries
-                .filter { it.weight != null && it.calories != null }
+                .filter { it.weight != null && it.calories != null && it.date > baseDate }
                 .sortedBy { it.date }
-                .takeLast(14)
-        if (recent.size < 2) return null
 
+        // -- Only proceed if there are enough entries and enough time has passed --
+        if (recent.size < 2) return null
         val first = recent.first()
         val last = recent.last()
+        val daysBetween = TimeUnit.MILLISECONDS.toDays(last.date - first.date).toDouble()
+        if (daysBetween < 7) return null // <-- Wait at least a week of data before checking for correction
 
-        val avgWeight = recent.mapNotNull { it.weight }.averageOrNull() ?: return null
+        // Only use up to the last 14 entries, but must still span 7+ days
+        val correctionWindow =
+            recent.takeLast(14)
+        if (correctionWindow.size < 2) return null
+        val windowFirst = correctionWindow.first()
+        val windowLast = correctionWindow.last()
+        val windowDays = TimeUnit.MILLISECONDS.toDays(windowLast.date - windowFirst.date).toDouble()
+        if (windowDays < 7) return null // <-- Ensure 7 days minimum in the rolling window
 
-        // 2. Get the projection from your centralized logic
+        // 4. Calculate projection rate from baseWeight (not from just windowFirst)
         val projection =
-            GoalCalculations.project(
+            project(
                 goal = goal,
-                currentWeight = avgWeight,
+                currentWeight = baseWeight,
                 avgMaintenance = estimatedMaintenance,
-                rateInput = rateInput,
-                selectedPreset = selectedPreset,
-                durationWeeks = durationWeeks,
-                targetDate = targetDate,
+                rateInput =
+                    when (goal.rateMode) {
+                        RateMode.KG_PER_WEEK -> goal.ratePerWeek?.toString() ?: ""
+                        RateMode.BODYWEIGHT_PERCENT -> goal.ratePercent?.toString() ?: ""
+                        RateMode.PRESET -> ""
+                        else -> ""
+                    },
+                selectedPreset = goal.ratePreset,
+                durationWeeks = goal.durationWeeks,
+                targetDate = goal.targetDate?.let { Date(it) },
             )
         val projectedRate = projection.rateKgPerWeek
         if (projectedRate == 0.0) return null
 
-        // 3. Calculate user's actual rate
-        val daysBetween = TimeUnit.MILLISECONDS.toDays(last.date - first.date).toDouble()
-        if (daysBetween == 0.0) return null
+        // 5. Compute actual rate in window
+        val weightDelta = (windowLast.weight ?: return null) - (windowFirst.weight ?: return null)
+        val actualRatePerWeek = (weightDelta / windowDays) * 7.0
 
-        val weightDelta = (last.weight ?: return null) - (first.weight ?: return null)
-        val actualRatePerWeek = (weightDelta / daysBetween) * 7.0
-
-        // 4. Only create segment if off by more than 10%
         val percentDeviation = ((actualRatePerWeek - projectedRate) / projectedRate).absoluteValue
-        if (percentDeviation <= 0.1) return null // Within ±10%, don't generate a segment
+        if (percentDeviation <= 0.1) return null // Only correct if off by more than 10%
 
-        // 5. Build and return segment
-        val startDate = Instant.ofEpochMilli(first.date).atZone(ZoneId.systemDefault()).toLocalDate()
-        val endDate = Instant.ofEpochMilli(last.date).atZone(ZoneId.systemDefault()).toLocalDate()
-        val startWeight = first.weight ?: return null
-        val endWeight = last.weight ?: return null
-
+        // 6. Build segment
         return GoalSegment(
             goalId = goalId,
-            startDate = startDate.toEpochMillis(),
-            endDate = endDate.toEpochMillis(),
-            startWeight = startWeight,
-            endWeight = endWeight,
+            startDate = windowFirst.date,
+            endDate = windowLast.date,
+            startWeight = windowFirst.weight ?: return null,
+            endWeight = windowLast.weight ?: return null,
             targetCalories = projection.targetCalories ?: 0,
+            ratePerWeek = actualRatePerWeek,
         )
     }
 
@@ -243,64 +265,4 @@ object GoalCalculations {
 
     // Extension for LocalDate to epoch millis
     private fun LocalDate.toEpochMillis(): Long = this.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-
-    fun generateSegments(
-        goal: Goal,
-        currentWeight: Double,
-        maintenanceCalories: Int,
-        today: LocalDate = LocalDate.now(),
-    ): List<GoalSegment> {
-        val projection =
-            project(
-                goal,
-                currentWeight,
-                maintenanceCalories,
-                rateInput =
-                    when (goal.rateMode) {
-                        RateMode.KG_PER_WEEK -> goal.ratePerWeek?.toString() ?: ""
-                        RateMode.BODYWEIGHT_PERCENT -> goal?.ratePercent?.toString() ?: ""
-                        RateMode.PRESET -> "" // not used
-                        else -> ""
-                    },
-            )
-        val goalId = goal.id ?: return emptyList()
-        val ratePerWeek = projection.rateKgPerWeek.takeIf { it != 0.0 } ?: return emptyList()
-
-        val goalDateLocal =
-            projection.goalDate
-                ?.toInstant()
-                ?.atZone(ZoneId.systemDefault())
-                ?.toLocalDate()
-
-        val totalWeeks =
-            ChronoUnit.WEEKS
-                .between(today, goalDateLocal)
-                .toInt()
-                .coerceAtLeast(1)
-
-        val segments = mutableListOf<GoalSegment>()
-
-        var startWeight = currentWeight
-        var startDate = today
-
-        repeat(totalWeeks) { i ->
-            val endDate = startDate.plusWeeks(1)
-            val endWeight = startWeight + ratePerWeek
-            val entity =
-                GoalSegment(
-                    goalId = goalId,
-                    startDate = startDate.toEpochMillis(),
-                    endDate = endDate.toEpochMillis(),
-                    startWeight = startWeight,
-                    endWeight = endWeight,
-                    targetCalories = projection.targetCalories ?: 0,
-                )
-            segments += entity
-
-            startWeight = endWeight
-            startDate = endDate
-        }
-
-        return segments
-    }
 }

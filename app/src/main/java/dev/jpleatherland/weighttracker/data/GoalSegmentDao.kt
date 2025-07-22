@@ -13,4 +13,7 @@ interface GoalSegmentDao {
 
     @Query("DELETE FROM goal_segment WHERE goalId = :goalId")
     suspend fun clearSegmentsForGoal(goalId: Int)
+
+    @Query("DELETE FROM goal_segment")
+    suspend fun clearAllGoalSegments()
 }

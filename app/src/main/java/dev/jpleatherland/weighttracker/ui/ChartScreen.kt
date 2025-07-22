@@ -3,6 +3,7 @@ package dev.jpleatherland.weighttracker.ui
 import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.graphics.Color
+import android.util.Log
 import android.view.ViewGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -368,6 +369,7 @@ fun ChartScreen(viewModel: WeightViewModel) {
     val segments by viewModel.goalSegments.collectAsState()
     val goalProjection by viewModel.goalProjection.collectAsState()
 
+    Log.d("ChartScreen", "Segments count: ${segments.size}")
     val entriesAsc = entries.sortedBy { it.date }
 
     ChartLayout(entries = entriesAsc, goal = goal, segments = segments, projection = goalProjection)

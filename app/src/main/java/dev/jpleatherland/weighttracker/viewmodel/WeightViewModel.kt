@@ -66,28 +66,30 @@ class WeightViewModel(
                     .takeIf { it.isNotEmpty() }
                     ?.average()
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
     val estimatedMaintenanceCalories: StateFlow<Int?> =
         entries
             .map { list ->
+                val now = System.currentTimeMillis()
+                val fourteenDaysAgo = now - TimeUnit.DAYS.toMillis(14)
                 val recent =
                     list
-                        .filter { it.weight != null && it.calories != null }
+                        .filter { it.weight != null && it.calories != null && it.date >= fourteenDaysAgo }
                         .sortedBy { it.date }
-                        .takeLast(14)
                 if (recent.size < 2) return@map null
 
                 val first = recent.first()
                 val last = recent.last()
 
                 val daysBetween = TimeUnit.MILLISECONDS.toDays(last.date - first.date).toDouble()
-                if (daysBetween == 0.0) return@map null
+                if (daysBetween < 7) return@map null // Must cover at least a week
 
                 val weightDelta = (last.weight ?: return@map null) - (first.weight ?: return@map null)
                 val kcalDelta = (weightDelta * 7700) / daysBetween
 
                 val avgCalories = recent.mapNotNull { it.calories }.average()
-                (avgCalories - kcalDelta).toInt()
+                val estimate = (avgCalories - kcalDelta).toInt()
+
+                if (estimate in 1000..6000) estimate else null // Clamp out crazy values
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     // === NEW: Centralized Projection State ===
@@ -160,6 +162,10 @@ class WeightViewModel(
 
     fun updateEntry(entry: WeightEntry) {
         viewModelScope.launch { repository.updateEntry(entry) }
+    }
+
+    fun addEntries(entries: List<WeightEntry>) {
+        viewModelScope.launch { repository.insertAll(entries) }
     }
 
     fun setGoal(goal: Goal) {
@@ -237,7 +243,7 @@ class WeightViewModel(
                         )
                     }
 
-                dao?.insertAll(entries)
+                addEntries(entries)
             } catch (e: Exception) {
                 Log.e("WeightViewModel", "Error syncing with Health Connect", e)
             } finally {

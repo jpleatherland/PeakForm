@@ -1,3 +1,5 @@
 <resources>
-    <string name="app_name">Weight Tracker</string>
+    <string name="app_name">PeakForm</string>
+    <string name="marker_weight_date">Weight: %1$.1f kg\n%2$s</string>
+    <string name="marker_calories_date">Calories: %1$d kcal\n%2$s</string>
 </resources>

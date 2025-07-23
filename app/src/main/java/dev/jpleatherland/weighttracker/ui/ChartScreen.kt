@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -27,6 +28,7 @@ import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
+import dev.jpleatherland.weighttracker.R
 import dev.jpleatherland.weighttracker.data.Goal
 import dev.jpleatherland.weighttracker.data.GoalSegment
 import dev.jpleatherland.weighttracker.data.WeightEntry
@@ -74,6 +76,9 @@ fun ChartLayout(
             Text("Calories Over Time", style = MaterialTheme.typography.titleMedium)
             CaloriesChart(
                 entries = entries,
+                goal = goal,
+                segments = segments,
+                projection = projection,
                 modifier =
                     chartModifier
                         .height(200.dp)
@@ -105,10 +110,13 @@ fun ChartLayout(
                 Text("Calories", style = MaterialTheme.typography.titleMedium)
                 CaloriesChart(
                     entries = entries,
+                    goal = goal,
+                    segments = segments,
+                    projection = projection,
                     modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .height(300.dp),
+                        chartModifier
+                            .height(200.dp)
+                            .fillMaxWidth(),
                 )
             }
         }
@@ -124,8 +132,10 @@ fun WeightChart(
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
+    val dateFormatter = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
 
     AndroidView(factory = { context ->
+        val markerView = ChartLabels(context, R.layout.marker_view)
         LineChart(context).apply {
             val chartHeightDp = 300.dp
             val heightPx = with(density) { chartHeightDp.roundToPx() }
@@ -145,6 +155,7 @@ fun WeightChart(
 
                     override fun getFormattedValue(value: Float): String = sdf.format(Date(TimeUnit.DAYS.toMillis(value.toLong())))
                 }
+            marker = markerView
         }
     }, update = { chart ->
 
@@ -154,7 +165,12 @@ fun WeightChart(
                 .filter { it.weight != null }
                 .sortedBy { it.date }
                 .map {
-                    Entry(TimeUnit.MILLISECONDS.toDays(it.date).toFloat(), it.weight!!.toFloat())
+                    val x = TimeUnit.MILLISECONDS.toDays(it.date).toFloat()
+                    val y = it.weight!!.toFloat()
+                    val dateString = dateFormatter.format(Date(it.date))
+                    Entry(x, y).apply {
+                        data = "type:weight|$dateString"
+                    }
                 }
 
         val lineDataSet =
@@ -212,7 +228,7 @@ fun buildGoalProjectionEntries(
 
     val firstWeightEntry = entries.firstOrNull { it.weight != null }
     val startWeight = firstWeightEntry?.weight ?: return emptyList()
-    val startDate = firstWeightEntry.date
+    val startDate = goal.createdAt
 
     val allSegments = segments.sortedBy { it.startDate }
     val entriesList = mutableListOf<Entry>()
@@ -274,11 +290,16 @@ private fun calculateTrendLine(entries: List<Entry>): List<Entry> {
 @Composable
 fun CaloriesChart(
     entries: List<WeightEntry>,
-    goalCalories: Int? = null,
+    goal: Goal?,
+    segments: List<GoalSegment>,
+    projection: GoalProjection?,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
+    val dateFormatter = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
+
     AndroidView(factory = { context ->
+        val markerView = ChartLabels(context, R.layout.marker_view)
         LineChart(context).apply {
             val chartHeightDp = 300.dp
             val heightPx = with(density) { chartHeightDp.roundToPx() }
@@ -297,45 +318,57 @@ fun CaloriesChart(
                     @SuppressLint("ConstantLocale")
                     private val sdf = SimpleDateFormat("dd/MM", Locale.getDefault())
 
-                    override fun getFormattedValue(value: Float): String = sdf.format(Date(value.toLong()))
+                    override fun getFormattedValue(value: Float): String = sdf.format(Date(TimeUnit.DAYS.toMillis(value.toLong())))
                 }
+            marker = markerView
         }
     }, update = { chart ->
+        // 1. Plot calorie data points
         val dataPoints =
             entries
                 .filter { it.calories != null }
                 .sortedBy { it.date }
                 .map {
-                    Entry(it.date.toFloat(), it.calories!!.toFloat())
+                    val x = TimeUnit.MILLISECONDS.toDays(it.date).toFloat()
+                    val y = it.calories!!.toFloat()
+                    val dateString = dateFormatter.format(Date(it.date))
+                    Entry(x, y).apply {
+                        data = "type:calories|$dateString"
+                    }
                 }
 
-        // Trend line calculation (reuse the same helper function!)
+        // 2. Trend line
         val trendPoints = calculateTrendLine(dataPoints)
 
+        // 3. Stepped goal line (green, dashed)
+        val goalCalories =
+            projection?.targetCalories
+
+        val segCals = segments.map { it.targetCalories }
+        Log.d("CaloriesChart", "segCals: $segCals")
+        val goalCaloriesEntries =
+            buildGoalCaloriesEntries(
+                goal = goal,
+                segments = segments,
+                entries = entries,
+                fallbackGoalCalories = goalCalories,
+            )
         val goalDataSet =
-            goalCalories?.let { gc ->
-                if (dataPoints.isNotEmpty()) {
-                    val goalEntries =
-                        listOf(
-                            Entry(dataPoints.first().x, gc.toFloat()),
-                            Entry(dataPoints.last().x, gc.toFloat()),
-                        )
-                    LineDataSet(
-                        goalEntries,
-                        "Goal",
-                    ).apply {
-                        color = Color.GREEN
-                        lineWidth = 2f
-                        setDrawCircles(false)
-                        setDrawValues(false)
-                        enableDashedLine(10f, 5f, 0f)
-                        setDrawHighlightIndicators(false)
-                    }
-                } else {
-                    null
+            if (goalCaloriesEntries.size > 1) {
+                LineDataSet(goalCaloriesEntries, "Goal Calories").apply {
+                    color = Color.GREEN
+                    lineWidth = 2f
+                    setDrawCircles(false)
+                    setDrawValues(false)
+                    enableDashedLine(10f, 5f, 0f)
+                    setDrawHighlightIndicators(false)
+                    isHighlightEnabled = false
                 }
+            } else {
+                null
             }
 
+        // 4. Entries line (red)
         val lineDataSet =
             LineDataSet(dataPoints, "Calories (kcal)").apply {
                 color = Color.RED
@@ -344,6 +377,7 @@ fun CaloriesChart(
                 setDrawValues(false)
             }
 
+        // 5. Trend line (gray, dashed)
         val trendDataSet =
             LineDataSet(trendPoints, "Trend").apply {
                 color = Color.GRAY
@@ -354,11 +388,69 @@ fun CaloriesChart(
                 setDrawHighlightIndicators(false)
             }
 
-        val dataSets = mutableListOf(lineDataSet, trendDataSet)
+        // 6. Add datasets
+        val dataSets = mutableListOf<ILineDataSet>(lineDataSet, trendDataSet)
         goalDataSet?.let { dataSets.add(it) }
-        chart.data = LineData(dataSets as List<ILineDataSet>?)
+        chart.data = LineData(dataSets)
         chart.invalidate()
     })
+}
+
+// Helper: Stepped goal calories line
+fun buildGoalCaloriesEntries(
+    goal: Goal?,
+    segments: List<GoalSegment>,
+    entries: List<WeightEntry>,
+    fallbackGoalCalories: Int? = null,
+): List<Entry> {
+    if (entries.isEmpty() && fallbackGoalCalories == null) return emptyList()
+    val toChartX = { millis: Long -> TimeUnit.MILLISECONDS.toDays(millis).toFloat() }
+
+    val chartStartX = goal?.createdAt
+    val chartEndX = entries.maxByOrNull { it.date }?.let { toChartX(it.date) }
+    val out = mutableListOf<Entry>()
+    val segs = segments.sortedBy { it.startDate }
+
+    // No segments: fallback flat line
+    if (segs.isEmpty()) {
+        if (fallbackGoalCalories != null && chartStartX != null && chartEndX != null) {
+            out.add(Entry(toChartX(chartStartX), fallbackGoalCalories.toFloat()))
+            out.add(Entry(chartEndX, fallbackGoalCalories.toFloat()))
+        }
+        return out
+    }
+
+    val firstSeg = segs.first()
+    val lastSeg = segs.last()
+
+    // Before first segment: fallback
+    if (chartStartX != null && chartStartX < toChartX(firstSeg.startDate)) {
+        val preSegCal = fallbackGoalCalories?.toFloat() ?: firstSeg.targetCalories.toFloat()
+        out.add(Entry(toChartX(chartStartX), preSegCal))
+        out.add(Entry(toChartX(firstSeg.startDate), preSegCal))
+    }
+
+    // Each segment: stepped
+    for ((index, seg) in segs.withIndex()) {
+        val segStartX = toChartX(seg.startDate)
+        val segEndX =
+            if (index < segs.size - 1) {
+                toChartX(segs[index + 1].startDate)
+            } else {
+                toChartX(seg.endDate)
+            }
+        out.add(Entry(segStartX, seg.targetCalories.toFloat()))
+        out.add(Entry(segEndX, seg.targetCalories.toFloat()))
+    }
+
+    // After last segment: fallback
+    if (chartEndX != null && chartEndX > toChartX(lastSeg.endDate)) {
+        val postSegCal = fallbackGoalCalories?.toFloat() ?: lastSeg.targetCalories.toFloat()
+        out.add(Entry(toChartX(lastSeg.endDate), postSegCal))
+        out.add(Entry(chartEndX, postSegCal))
+    }
+
+    return out
 }
 
 @Composable

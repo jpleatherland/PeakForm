@@ -7,6 +7,8 @@ class WeightRepository(
 ) {
     suspend fun insert(entry: WeightEntry): Long = dao.insert(entry)
 
+    suspend fun insertAll(entries: List<WeightEntry>) = dao.insertAll(entries)
+
     fun getAllEntries(): Flow<List<WeightEntry>> = dao.getAllEntries()
 
     fun getEntriesSince(since: Long): Flow<List<WeightEntry>> = dao.getEntriesSince(since)

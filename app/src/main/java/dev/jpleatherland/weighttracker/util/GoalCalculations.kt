@@ -205,21 +205,26 @@ object GoalCalculations {
                 .filter { it.weight != null && it.calories != null && it.date > baseDate }
                 .sortedBy { it.date }
 
-        // -- Only proceed if there are enough entries and enough time has passed --
+        // --- Only proceed if there are at least 14 calendar days' data, and at least 7 days since last correction ---
         if (recent.size < 2) return null
         val first = recent.first()
         val last = recent.last()
         val daysBetween = TimeUnit.MILLISECONDS.toDays(last.date - first.date).toDouble()
-        if (daysBetween < 7) return null // <-- Wait at least a week of data before checking for correction
 
-        // Only use up to the last 14 entries, but must still span 7+ days
+        if (daysBetween < 14) return null // <--- Only act if you have 14 days' coverage
+        if (TimeUnit.MILLISECONDS.toDays(last.date - baseDate) < 7) return null // <--- Only act if at least 7 days since last correction
+
+        // Only use up to the last 14 entries within the last 14 days
+        val fourteenDaysAgo = last.date - TimeUnit.DAYS.toMillis(14)
         val correctionWindow =
-            recent.takeLast(14)
+            recent
+                .filter { it.date >= fourteenDaysAgo }
+                .takeLast(14)
         if (correctionWindow.size < 2) return null
         val windowFirst = correctionWindow.first()
         val windowLast = correctionWindow.last()
         val windowDays = TimeUnit.MILLISECONDS.toDays(windowLast.date - windowFirst.date).toDouble()
-        if (windowDays < 7) return null // <-- Ensure 7 days minimum in the rolling window
+        if (windowDays < 7) return null // Ensure 7 days minimum in the rolling window
 
         // 4. Calculate projection rate from baseWeight (not from just windowFirst)
         val projection =
@@ -248,14 +253,18 @@ object GoalCalculations {
         val percentDeviation = ((actualRatePerWeek - projectedRate) / projectedRate).absoluteValue
         if (percentDeviation <= 0.1) return null // Only correct if off by more than 10%
 
-        // 6. Build segment
+        // 6. Do not create a segment if targetCalories is null or not reasonable
+        val targetCals = projection.targetCalories
+        if (targetCals == null || targetCals !in 1200..6000) return null
+
+        // 7. Build segment
         return GoalSegment(
             goalId = goalId,
             startDate = windowFirst.date,
             endDate = windowLast.date,
             startWeight = windowFirst.weight ?: return null,
             endWeight = windowLast.weight ?: return null,
-            targetCalories = projection.targetCalories ?: 0,
+            targetCalories = targetCals,
             ratePerWeek = actualRatePerWeek,
         )
     }

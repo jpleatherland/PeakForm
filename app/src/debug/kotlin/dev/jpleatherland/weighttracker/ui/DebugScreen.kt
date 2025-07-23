@@ -61,6 +61,11 @@ fun DebugScreen(
             }) {
                 Text("Bulk with Jump by Date")
             }
+            Button(onClick = {
+                generateTestData(scope, dao, goalDao, TestDataType.CUT_WITH_JUMP_BY_DATE, viewModel)
+            }) {
+                Text("Cut with Jump by Date")
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))

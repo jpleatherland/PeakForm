@@ -290,6 +290,7 @@ fun GoalScreen(viewModel: WeightViewModel) {
                         rateMode = rateMode,
                         ratePercent = if (rateMode == RateMode.BODYWEIGHT_PERCENT) rateInput.toDoubleOrNull() else null,
                         ratePreset = if (rateMode == RateMode.PRESET) selectedPreset else null,
+                        createdAt = System.currentTimeMillis(),
                     )
                 viewModel.setGoal(goal)
             },

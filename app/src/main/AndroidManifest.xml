@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="dev.jpleatherland.weighttracker">
+    package="dev.jpleatherland.peakform">
 
     <!-- Read access for Health Connect (reading weight date) -->
     <uses-permission android:name="android.permission.READ_HEALTH_DATA" />
@@ -19,7 +19,7 @@
         android:theme="@style/Theme.WeightTracker"
         tools:targetApi="31">
         <activity
-            android:name=".MainActivity"
+            android:name="dev.jpleatherland.peakform.MainActivity"
             android:exported="true"
             android:theme="@style/Theme.WeightTracker">
             <intent-filter>
@@ -30,7 +30,7 @@
         </activity>
 
         <activity
-            android:name="PermissionsRationaleActivity"
+            android:name="dev.jpleatherland.peakform.PermissionsRationaleActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
@@ -40,7 +40,7 @@
         <activity-alias
             android:name="ViewPermissionUsageActivity"
             android:exported="true"
-            android:targetActivity="PermissionsRationaleActivity"
+            android:targetActivity="dev.jpleatherland.peakform.PermissionsRationaleActivity"
             android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />

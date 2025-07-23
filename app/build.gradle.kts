@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "dev.jpleatherland.weighttracker"
+    namespace = "dev.jpleatherland.peakform"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "dev.jpleatherland.weighttracker"
+        applicationId = "dev.jpleatherland.peakform"
         minSdk = 28
         targetSdk = 36
         versionCode = 1

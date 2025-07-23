@@ -16,10 +16,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven ( "https://jitpack.io" )
+        maven("https://jitpack.io")
     }
 }
 
-rootProject.name = "Weight Tracker"
+rootProject.name = "PeakForm"
 include(":app")
- 

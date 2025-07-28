@@ -4,9 +4,11 @@
     package="dev.jpleatherland.peakform">
 
     <!-- Read access for Health Connect (reading weight date) -->
-    <uses-permission android:name="android.permission.READ_HEALTH_DATA" />
+    <uses-permission android:name="android.permission.HEALTH" />
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
     <uses-permission android:name="android.permission.health.READ_NUTRITION" />
+    <uses-permission android:name="android.permission.health.WRITE_WEIGHT"/>
+    <uses-permission android:name="android.permission.health.WRITE_NUTRITION" />
 
     <application
         android:allowBackup="true"

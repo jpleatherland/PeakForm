@@ -15,14 +15,14 @@ import dev.jpleatherland.peakform.viewmodel.WeightViewModel
 fun AppNavHost(
     navController: NavHostController,
     viewModel: WeightViewModel,
-    startDestination: String = "entry",
+    startDestination: String = Screen.Entry.route,
 ) {
     NavHost(navController = navController, startDestination = startDestination) {
-        composable("entry") { DailyEntryScreen(viewModel) }
-        composable("charts") { ChartScreen(viewModel) }
-        composable("goals") { GoalScreen(viewModel) }
-        composable("history") { HistoryScreen(viewModel) }
-        composable("settings") { SettingsScreen(viewModel) }
+        composable(Screen.Entry.route) { DailyEntryScreen(viewModel) }
+        composable(Screen.Charts.route) { ChartScreen(viewModel) }
+        composable(Screen.Goals.route) { GoalScreen(viewModel) }
+        composable(Screen.History.route) { HistoryScreen(viewModel) }
+        composable(Screen.Settings.route) { SettingsScreen(viewModel) }
         appNavHostAddDebugRoutes(
             navController,
             viewModel,

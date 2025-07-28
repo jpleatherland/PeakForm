@@ -27,9 +27,31 @@ fun HistoryScreen(viewModel: WeightViewModel) {
     var editingEntry by remember { mutableStateOf<WeightEntry?>(null) }
 
     Column(modifier = Modifier.padding(16.dp)) {
-        Text("History", style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(8.dp))
-
+//        Row(
+//            modifier = Modifier.fillMaxWidth(),
+//            verticalAlignment = Alignment.CenterVertically,
+//        ) {
+//            Text(
+//                text = "Date",
+//                modifier = Modifier.weight(1f),
+//            )
+//            Text(
+//                text = "Weight",
+//                modifier = Modifier.weight(1f),
+//            )
+//            Text(
+//                text = "Calories",
+//                modifier = Modifier.weight(1f),
+//            )
+//            Text(
+//                text = "Edit",
+//                modifier = Modifier.weight(1f),
+//            )
+//            Text(
+//                text = "Delete",
+//                modifier = Modifier.weight(1f),
+//            )
+//        }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(entries.size) { index ->
                 val entry = entries[index]
@@ -125,11 +147,21 @@ fun EditEntryDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             Button(onClick = {
+                val updatedWeight = weight
+                val updatedCalories = calories.toIntOrNull()
+
+                val newWeightSource =
+                    if (updatedWeight != (original.weight ?: 0.0)) "user" else original.weightSource
+                val newCaloriesSource =
+                    if (updatedCalories != original.calories) "user" else original.caloriesSource
+
                 val updated =
                     original.copy(
                         date = selectedDate,
-                        weight = weight,
-                        calories = calories.toIntOrNull() ?: original.calories,
+                        weight = updatedWeight,
+                        calories = updatedCalories ?: original.calories,
+                        weightSource = newWeightSource,
+                        caloriesSource = newCaloriesSource,
                     )
                 onSave(updated)
             }) {

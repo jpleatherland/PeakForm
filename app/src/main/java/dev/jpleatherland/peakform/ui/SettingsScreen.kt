@@ -25,63 +25,96 @@ fun SettingsScreen(
     settingsViewModel: SettingsViewModel = viewModel(),
 ) {
     val weightUnit by settingsViewModel.weightUnit.collectAsState()
-
-    val isSynching by viewModel.syncInProgress.collectAsState()
+    val isSyncing by viewModel.syncInProgress.collectAsState()
     val context = LocalContext.current
-    val healthPermissions =
+    val readPermissions =
         setOf(
             HealthPermission.getReadPermission(WeightRecord::class),
             HealthPermission.getReadPermission(NutritionRecord::class),
         )
+    val writePermissions =
+        setOf(
+            HealthPermission.getWritePermission(WeightRecord::class),
+            HealthPermission.getWritePermission(NutritionRecord::class),
+        )
 
+    var showWriteDialog by remember { mutableStateOf(false) }
     val permissionLauncher =
         rememberLauncherForActivityResult(
             PermissionController.createRequestPermissionResultContract(),
         ) { granted: Set<String> ->
             Log.d("SettingsScreen", "trying permissions : $granted")
-            if (granted.containsAll(healthPermissions)) {
-                viewModel.syncHealthConnect()
+            if (showWriteDialog && granted.containsAll(writePermissions)) {
+                viewModel.writeAppOnlyEntriesToHealthConnect()
+                showWriteDialog = false
+            } else if (granted.containsAll(readPermissions)) {
+                viewModel.readHealthConnect()
             } else {
                 Toast.makeText(context, "Health Connect permission denied.", Toast.LENGTH_LONG).show()
             }
         }
 
     Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
-        Text("Settings", style = MaterialTheme.typography.headlineMedium)
-
         // --- Unit Selection ---
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text("Weight unit:")
-
             SegmentedButton(
                 options = listOf("kg", "lbs"),
                 selected = if (weightUnit == WeightUnit.KG) 0 else 1,
                 onSelected = {
-                    settingsViewModel.setWeightUnit(
-                        if (it == 0) WeightUnit.KG else WeightUnit.LB,
-                    )
+                    settingsViewModel.setWeightUnit(if (it == 0) WeightUnit.KG else WeightUnit.LB)
                 },
             )
         }
 
-        // --- Health Connect Sync ---
+        // --- Health Connect Sync: READ ---
         Button(
             onClick = {
-                permissionLauncher.launch(healthPermissions)
+                permissionLauncher.launch(
+                    readPermissions,
+                )
             },
-            enabled = !isSynching,
-        ) {
-            Text("Sync Health Connect")
-        }
+            enabled = !isSyncing,
+        ) { Text("Read from Health Connect") }
+
+        // --- Health Connect Sync: WRITE ---
+        Button(
+            onClick = { showWriteDialog = true },
+            enabled = !isSyncing,
+        ) { Text("Write to Health Connect") }
+    }
+
+    // --- Popup/AlertDialog for Write Confirmation ---
+    if (showWriteDialog) {
+        AlertDialog(
+            onDismissRequest = { showWriteDialog = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        permissionLauncher.launch(
+                            writePermissions,
+                        )
+                    },
+                ) { Text("Continue") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWriteDialog = false }) { Text("Cancel") }
+            },
+            title = { Text("Sync user data to Health Connect?") },
+            text = {
+                Text(
+                    """This will write only data that you have entered in PeakForm (not imported from Health Connect) to your Health Connect profile. 
+                        |Data previously imported from Health Connect will remain unchanged.
+                    """.trimMargin(),
+                )
+            },
+        )
     }
 }
 

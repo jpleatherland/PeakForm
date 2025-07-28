@@ -152,30 +152,28 @@ fun GoalScreen(viewModel: WeightViewModel) {
                 .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        avgWeight?.let {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(4.dp),
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("7-Day Rolling Average Weight", style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        text = String.format(Locale.UK, "%.2f kg", it),
-                        style = MaterialTheme.typography.headlineMedium,
-                    )
-                    Text("Estimated Maintenance", style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        text = "$maintenance kcal/day",
-                        style = MaterialTheme.typography.headlineMedium,
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(4.dp))
-
-        Text("Set Your Goal", style = MaterialTheme.typography.headlineSmall)
-
+//        avgWeight?.let {
+//            Card(
+//                modifier = Modifier.fillMaxWidth(),
+//                elevation = CardDefaults.cardElevation(4.dp),
+//            ) {
+//                Column(Modifier.padding(16.dp)) {
+//                    Text("7-Day Rolling Average Weight", style = MaterialTheme.typography.labelLarge)
+//                    Text(
+//                        text = String.format(Locale.UK, "%.2f kg", it),
+//                        style = MaterialTheme.typography.headlineMedium,
+//                    )
+//                    Text("Estimated Maintenance", style = MaterialTheme.typography.labelLarge)
+//                    Text(
+//                        text = "$maintenance kcal/day",
+//                        style = MaterialTheme.typography.headlineMedium,
+//                    )
+//                }
+//            }
+//        }
+//
+//        Spacer(Modifier.height(4.dp))
+//
         DropdownSelector(
             label = "Goal Type",
             options = GoalType.entries,

@@ -95,6 +95,7 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
 
     val avgWeight by viewModel.sevenDayAvgWeight.collectAsState()
     val maintenance by viewModel.estimatedMaintenanceCalories.collectAsState()
+    val maintenanceEntryCount by viewModel.maintenanceEntryCount.collectAsState()
     val goal by viewModel.goal.collectAsState()
     val goalProgress by viewModel.goalProgress.collectAsState() // If you want to keep using this, fine!
 
@@ -197,9 +198,21 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
                     val w = weight.toDoubleOrNull()
                     val c = calories.toIntOrNull()
                     val d = nonNullDate.asDayEpochMillis()
+                    val ws =
+                        if (w != null) {
+                            "user"
+                        } else {
+                            null
+                        }
+                    val cs =
+                        if (c != null) {
+                            "user"
+                        } else {
+                            null
+                        }
 
                     if (w != null || c != null) {
-                        viewModel.addEntry(w, c, d) { success ->
+                        viewModel.addEntry(w, c, d, ws, cs) { success ->
                             if (success) {
                                 Toast.makeText(context, "Entry saved successfully", Toast.LENGTH_SHORT).show()
                                 weight = ""
@@ -250,6 +263,10 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
                     Column(Modifier.padding(16.dp)) {
                         Text("Estimated Maintenance Calories", style = MaterialTheme.typography.labelLarge)
                         Text(text = "$it kcal", style = MaterialTheme.typography.headlineMedium)
+                        Text(
+                            text = "Based on $maintenanceEntryCount entries in the last 14 days",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                 }
             }

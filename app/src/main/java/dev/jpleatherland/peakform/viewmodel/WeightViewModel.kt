@@ -4,10 +4,14 @@ import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.records.NutritionRecord
 import androidx.health.connect.client.records.WeightRecord
+import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import androidx.health.connect.client.units.Energy
+import androidx.health.connect.client.units.Mass
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.mikephil.charting.utils.Utils.init
 import dev.jpleatherland.peakform.BuildConfig
 import dev.jpleatherland.peakform.data.Goal
 import dev.jpleatherland.peakform.data.GoalDao
@@ -28,6 +32,7 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
 import java.util.Date
 import java.util.concurrent.TimeUnit
@@ -65,6 +70,8 @@ class WeightViewModel(
                     .takeIf { it.isNotEmpty() }
                     ?.average()
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    private val _maintenanceEntryCount = MutableStateFlow(0)
+    val maintenanceEntryCount: StateFlow<Int> = _maintenanceEntryCount
     val estimatedMaintenanceCalories: StateFlow<Int?> =
         entries
             .map { list ->
@@ -87,6 +94,8 @@ class WeightViewModel(
 
                 val avgCalories = recent.mapNotNull { it.calories }.average()
                 val estimate = (avgCalories - kcalDelta).toInt()
+
+                _maintenanceEntryCount.value = recent.size
 
                 if (estimate in 1000..6000) estimate else null // Clamp out crazy values
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -144,12 +153,21 @@ class WeightViewModel(
         weight: Double?,
         calories: Int?,
         date: Long,
+        weightSource: String? = null,
+        caloriesSource: String? = null,
         onResult: (Boolean) -> Unit,
     ) {
         viewModelScope.launch {
             try {
                 Log.d("Debug", "App DB instance: ${dao.hashCode()}")
-                val entry = WeightEntry(weight = weight, calories = calories, date = date)
+                val entry =
+                    WeightEntry(
+                        weight = weight,
+                        calories = calories,
+                        date = date,
+                        weightSource = weightSource,
+                        caloriesSource = caloriesSource,
+                    )
                 val id = repository.insert(entry)
                 onResult(id > 0)
             } catch (e: Exception) {
@@ -178,7 +196,7 @@ class WeightViewModel(
     private val _syncInProgress = MutableStateFlow(false)
     val syncInProgress: StateFlow<Boolean> = _syncInProgress
 
-    fun syncHealthConnect() {
+    fun readHealthConnect() {
         viewModelScope.launch {
             _syncInProgress.value = true
             try {
@@ -196,14 +214,14 @@ class WeightViewModel(
                         ).records
 
                 Log.d("WeightViewModel", "Found ${weightRecords.size} weight records")
-                val weightByDate: Map<LocalDate, Double> =
+                val weightByDate: Map<LocalDate, Double?> =
                     weightRecords
                         .groupBy { it.time.atZone(ZoneId.systemDefault()).toLocalDate() }
                         .mapValues { entry ->
                             entry.value
                                 .maxByOrNull { it.time }
                                 ?.weight
-                                ?.inKilograms ?: 0.0
+                                ?.inKilograms
                         }
 
                 val nutritionRecords =
@@ -220,11 +238,16 @@ class WeightViewModel(
                         ).records
                 Log.d("WeightViewModel", "Found ${nutritionRecords.size} nutrition records")
 
-                val caloriesByDate: Map<LocalDate, Int> =
+                val caloriesByDate: Map<LocalDate, Int?> =
                     nutritionRecords
                         .groupBy { it.startTime.atZone(ZoneId.systemDefault()).toLocalDate() }
                         .mapValues { entry ->
-                            entry.value.sumOf { it.energy?.inKilocalories?.toInt() ?: 0 }
+                            val kcals = entry.value.mapNotNull { it.energy?.inKilocalories?.toInt() }
+                            if (kcals.isEmpty()) {
+                                null
+                            } else {
+                                kcals.sum()
+                            }
                         }
 
                 val allDates: Set<LocalDate> = weightByDate.keys + caloriesByDate.keys
@@ -235,14 +258,81 @@ class WeightViewModel(
                             "WeightViewModel",
                             "Syncing date: $date, weight: ${weightByDate[date]}, calories: ${caloriesByDate[date]}",
                         )
+                        val weightSource =
+                            if (weightByDate[date] != null) "health_connect" else null
+                        val caloriesSource =
+                            if (caloriesByDate[date] != null) "health_connect" else null
                         WeightEntry(
                             date = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
                             weight = weightByDate[date],
                             calories = caloriesByDate[date],
+                            weightSource = weightSource,
+                            caloriesSource = caloriesSource,
                         )
                     }
 
                 addEntries(entries)
+            } catch (e: Exception) {
+                Log.e("WeightViewModel", "Error syncing with Health Connect", e)
+            } finally {
+                _syncInProgress.value = false
+            }
+        }
+    }
+
+    fun writeAppOnlyEntriesToHealthConnect() {
+        viewModelScope.launch {
+            _syncInProgress.value = true
+            try {
+                val weightAppOnlyEntries = entries.value.filter { it.weightSource == "user" && it.weight != null }
+                val caloriesAppOnlyEntries = entries.value.filter { it.caloriesSource == "user" && it.calories != null }
+                val records = mutableListOf<androidx.health.connect.client.records.Record>()
+                for (entry in weightAppOnlyEntries) {
+                    // -- WeightRecord --
+                    entry.weight?.let { weight ->
+                        val instant = Instant.ofEpochMilli(entry.date)
+                        val zoneOffset = ZoneId.systemDefault().rules.getOffset(instant)
+                        val record =
+                            WeightRecord(
+                                weight = Mass.kilograms(weight),
+                                time = instant,
+                                zoneOffset = zoneOffset,
+                                metadata = Metadata.manualEntry(),
+                            )
+                        records.add(record)
+                    }
+                }
+                for (entry in caloriesAppOnlyEntries) {
+                    // -- NutritionRecord (Calories/Energy) --
+                    entry.calories?.let { calories ->
+                        val date = Instant.ofEpochMilli(entry.date)
+                        val zoneId = ZoneId.systemDefault()
+                        val localDate = date.atZone(zoneId).toLocalDate()
+                        val startOfDay = localDate.atStartOfDay(zoneId).toInstant()
+                        val endOfDay =
+                            localDate
+                                .plusDays(1)
+                                .atStartOfDay(zoneId)
+                                .toInstant()
+                                .minusMillis(1)
+                        val zoneOffset = zoneId.rules.getOffset(startOfDay)
+                        val record =
+                            NutritionRecord(
+                                startTime = startOfDay,
+                                startZoneOffset = zoneOffset,
+                                endTime = endOfDay,
+                                endZoneOffset = zoneOffset,
+                                energy = Energy.kilocalories(calories.toDouble()),
+                                metadata = Metadata.manualEntry(),
+                            )
+                        records.add(record)
+                    }
+                }
+                if (records.isNotEmpty()) {
+                    healthConnectClient.insertRecords(
+                        records,
+                    )
+                }
             } catch (e: Exception) {
                 Log.e("WeightViewModel", "Error syncing with Health Connect", e)
             } finally {

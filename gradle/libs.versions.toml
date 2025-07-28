@@ -12,6 +12,7 @@ compose-nav = "2.9.1"
 room = "2.7.2"
 mpandroidchart = "v3.1.0"
 ktlint = "11.6.0"
+uiTextGoogleFonts = "1.8.3"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -38,6 +39,7 @@ room-compiler = { group = "androidx.room", name = "room-compiler", version.ref =
 mpandroidchart = { group = "com.github.PhilJay", name = "MPAndroidChart", version.ref = "mpandroidchart" }
 
 health-connect = { group = "androidx.health.connect", name = "connect-client", version = "1.1.0-rc03" }
+androidx-ui-text-google-fonts = { group = "androidx.compose.ui", name = "ui-text-google-fonts", version.ref = "uiTextGoogleFonts" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

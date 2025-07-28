@@ -3,6 +3,7 @@ package dev.jpleatherland.peakform
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
@@ -14,6 +15,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.HealthConnectClient
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.*
@@ -24,7 +27,7 @@ import dev.jpleatherland.peakform.data.WeightViewModelFactory
 import dev.jpleatherland.peakform.data.provideDatabase
 import dev.jpleatherland.peakform.navigation.AppNavHost
 import dev.jpleatherland.peakform.navigation.Screen
-import dev.jpleatherland.peakform.ui.theme.WeightTrackerTheme
+import dev.jpleatherland.peakform.ui.theme.PeakFormTheme
 import dev.jpleatherland.peakform.viewmodel.WeightViewModel
 
 class MainActivity : ComponentActivity() {
@@ -40,7 +43,7 @@ class MainActivity : ComponentActivity() {
         val viewModel = ViewModelProvider(this, factory)[WeightViewModel::class.java]
 
         setContent {
-            WeightTrackerTheme {
+            PeakFormTheme {
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute =
@@ -147,10 +150,16 @@ fun MyTopBar(
     onSettingsClick: () -> Unit,
 ) {
     when (currentScreen) {
-        Screen.Home -> {
+        Screen.Entry -> {
             TopAppBar(
                 title = { Text("PeakForm") },
-                navigationIcon = { R.mipmap.ic_launcher },
+                navigationIcon = {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_launcher_removebg),
+                        contentDescription = "PeakForm Logo",
+                        modifier = Modifier.size(60.dp), // Adjust size as needed
+                    )
+                },
                 actions = {
                     IconButton(onClick = onSettingsClick) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")

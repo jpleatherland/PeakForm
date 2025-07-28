@@ -82,6 +82,7 @@ dependencies {
     implementation(libs.mpandroidchart)
 
     implementation(libs.health.connect)
+    implementation(libs.androidx.ui.text.google.fonts)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

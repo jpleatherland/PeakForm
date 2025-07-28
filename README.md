@@ -20,11 +20,13 @@
 
 ## Screenshots
 
-<!-- TODO: Add screenshots here -->
 <p float="left">
-  <img src="docs/screenshot_log.png" width="200">
-  <img src="docs/screenshot_trends.png" width="200">
-  <img src="docs/screenshot_goal.png" width="200">
+<img width="200" alt="entryMetrics" src="https://github.com/user-attachments/assets/3112bbd7-f700-4553-90dd-2d5db2ffbd31" />
+<img width="200" alt="trends" src="https://github.com/user-attachments/assets/ba4c5f6b-5496-44c6-b602-8bbe607fc354" />
+<img width="200" alt="cutgoal" src="https://github.com/user-attachments/assets/df518927-12d5-422a-911c-fffd948fac07" />
+<img width="200" alt="history" src="https://github.com/user-attachments/assets/88248bc5-6a68-4d0b-a000-cfb2e8693daa" />
+<img width="200" alt="settings" src="https://github.com/user-attachments/assets/595e28fe-8f94-476b-92c9-0cb32d088e89" />
+
 </p>
 
 ---

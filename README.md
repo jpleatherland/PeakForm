@@ -21,12 +21,20 @@
 ## Screenshots
 
 <p float="left">
-<img width="200" alt="entryMetrics" src="https://github.com/user-attachments/assets/3112bbd7-f700-4553-90dd-2d5db2ffbd31" />
-<img width="200" alt="trends" src="https://github.com/user-attachments/assets/ba4c5f6b-5496-44c6-b602-8bbe607fc354" />
-<img width="200" alt="cutgoal" src="https://github.com/user-attachments/assets/df518927-12d5-422a-911c-fffd948fac07" />
-<img width="200" alt="history" src="https://github.com/user-attachments/assets/88248bc5-6a68-4d0b-a000-cfb2e8693daa" />
-<img width="200" alt="settings" src="https://github.com/user-attachments/assets/595e28fe-8f94-476b-92c9-0cb32d088e89" />
+<img width="108" height="240" alt="Screenshot_20250729-195509" src="https://github.com/user-attachments/assets/35951d1b-7d66-4362-bb12-b9e8e9368dec" />
+<img width="108" height="240" alt="Screenshot_20250729-195517" src="https://github.com/user-attachments/assets/7541757f-7a10-4c2e-b629-469bb089741a" />
+<img width="108" height="240" alt="Screenshot_20250729-195523" src="https://github.com/user-attachments/assets/f330bdcc-63f7-4f17-b3d0-85be7e73153e" />
+<img width="108" height="240" alt="Screenshot_20250729-195526" src="https://github.com/user-attachments/assets/786e7bdc-caf3-415e-af56-c16552715212" />
 
+    
+<img width="108" height="240" alt="Screenshot_20250729-195531" src="https://github.com/user-attachments/assets/fd24289e-80b1-4dd4-b0b9-bd8eefb6660c" />
+<img width="108" height="240" alt="Screenshot_20250729-195535" src="https://github.com/user-attachments/assets/858f5a30-de0e-476e-889f-3d66c9c0d98f" />
+<img width="108" height="240" alt="Screenshot_20250729-195538" src="https://github.com/user-attachments/assets/38b3d6e2-f62d-4475-adb4-4d673b622337" />
+<img width="108" height="240" alt="Screenshot_20250729-195542" src="https://github.com/user-attachments/assets/b840e703-33e4-4e5d-bff6-c552c839069a" />
+
+
+<img width="108" height="240" alt="Screenshot_20250729-195546" src="https://github.com/user-attachments/assets/7b15144b-fcb5-4afc-b446-e83dc874e5a7" />
+<img width="108" height="240" alt="Screenshot_20250729-195550" src="https://github.com/user-attachments/assets/0fe59ad9-b868-44eb-98e7-9cc30e031362" />
 </p>
 
 ---
@@ -66,7 +74,7 @@ Check out the [contributing guidelines](CONTRIBUTING.md) (coming soon) or open a
 
 - [ ] Month-by-month chart navigation
 - [ ] Theming & visual polish
-- [ ] Better localisation support. KG vs LBS, date formats etc.
+- [ ] Better localisation support
 
 ---
 

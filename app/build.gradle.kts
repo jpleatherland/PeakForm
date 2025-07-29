@@ -77,9 +77,10 @@ android {
                     ?: localKeystoreProperties["storePassword"]?.toString()
                     ?: error("No storePassword provided")
             keyAlias =
-                keyAlias
-                    ?: localKeystoreProperties["keyAlias"]?.toString()
-                    ?: error("No keyAlias provided")
+                "peakform"
+//                keyAlias
+//                    ?: localKeystoreProperties["keyAlias"]?.toString()
+//                    ?: error("No keyAlias provided")
             keyPassword =
                 keyPassword
                     ?: localKeystoreProperties["keyPassword"]?.toString()

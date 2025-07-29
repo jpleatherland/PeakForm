@@ -59,6 +59,14 @@ android {
     lint {
         disable += "NullSafeMutableLiveData"
     }
+    println("keystorePath: " + project.findProperty("keystorePath"))
+    println("keystorePassword: " + project.findProperty("keystorePassword"))
+    println("keyAlias: " + project.findProperty("keyAlias"))
+    println("keyPassword: " + project.findProperty("keyPassword"))
+    println("KEYSTORE_PATH: " + System.getenv("KEYSTORE_PATH"))
+    println("KEYSTORE_PASSWORD: " + System.getenv("KEYSTORE_PASSWORD"))
+    println("KEY_ALIAS: " + System.getenv("KEY_ALIAS"))
+    println("KEY_PASSWORD: " + System.getenv("KEY_PASSWORD"))
     signingConfigs {
 //        create("debugRelease") {
 //            storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")

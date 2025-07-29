@@ -1,19 +1,5 @@
 import java.util.Properties
 
-
-val keystoreFile = project.findProperty("keystorePath") as String? ?: System.getenv("KEYSTORE_PATH")
-val keystorePassword = project.findProperty("keystorePassword") as String? ?: System.getenv("KEYSTORE_PASSWORD")
-val keyAlias = project.findProperty("keyAlias") as String? ?: System.getenv("KEY_ALIAS")
-val keyPassword = project.findProperty("keyPassword") as String? ?: System.getenv("KEY_PASSWORD")
-
-val localKeystorePropertiesFile = File(rootDir, "keystore.properties")
-val localKeystoreProperties =
-    Properties().apply {
-        if (localKeystorePropertiesFile.exists()) {
-            load(localKeystorePropertiesFile.inputStream())
-        }
-    }
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -59,14 +45,6 @@ android {
     lint {
         disable += "NullSafeMutableLiveData"
     }
-    println("keystorePath: " + project.findProperty("keystorePath"))
-    println("keystorePassword: " + project.findProperty("keystorePassword"))
-    println("keyAlias: " + project.findProperty("keyAlias"))
-    println("keyPassword: " + project.findProperty("keyPassword"))
-    println("KEYSTORE_PATH: " + System.getenv("KEYSTORE_PATH"))
-    println("KEYSTORE_PASSWORD: " + System.getenv("KEYSTORE_PASSWORD"))
-    println("KEY_ALIAS: " + System.getenv("KEY_ALIAS"))
-    println("KEY_PASSWORD: " + System.getenv("KEY_PASSWORD"))
     signingConfigs {
 //        create("debugRelease") {
 //            storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
@@ -75,24 +53,34 @@ android {
 //            keyPassword = "android"
 //        }
         create("release") {
+            val localPropsFile = File(rootDir, "keystore.properties")
+            val localProps =
+                Properties().apply {
+                    if (localPropsFile.exists()) {
+                        load(localPropsFile.inputStream())
+                    }
+                }
             storeFile =
                 file(
-                    keystoreFile
-                        ?: localKeystoreProperties["storeFile"]?.toString()
+                    project.findProperty("keystorePath") as String?
+                        ?: System.getenv("KEYSTORE_PATH")
+                        ?: localProps["storeFile"]?.toString()
                         ?: error("No storeFile provided"),
                 )
             storePassword =
-                keystorePassword
-                    ?: localKeystoreProperties["storePassword"]?.toString()
+                project.findProperty("keystorePassword") as String?
+                    ?: System.getenv("KEYSTORE_PASSWORD")
+                    ?: localProps["storePassword"]?.toString()
                     ?: error("No storePassword provided")
             keyAlias =
-                "peakform"
-//                keyAlias
-//                    ?: localKeystoreProperties["keyAlias"]?.toString()
-//                    ?: error("No keyAlias provided")
+                project.findProperty("keyAlias") as String?
+                    ?: System.getenv("KEY_ALIAS")
+                    ?: localProps["keyAlias"]?.toString()
+                    ?: error("No keyAlias provided")
             keyPassword =
-                keyPassword
-                    ?: localKeystoreProperties["keyPassword"]?.toString()
+                project.findProperty("keyPassword") as String?
+                    ?: System.getenv("KEY_PASSWORD")
+                    ?: localProps["keyPassword"]?.toString()
                     ?: error("No keyPassword provided")
         }
     }

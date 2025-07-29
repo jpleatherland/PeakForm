@@ -66,10 +66,24 @@ android {
 //            keyPassword = "android"
 //        }
         create("release") {
-            storeFile = file(keystoreFile ?: localKeystoreProperties["storeFile"] as String)
-            storePassword = keystorePassword ?: localKeystoreProperties["storePassword"] as String
-            keyAlias = keyAlias ?: localKeystoreProperties["keyAlias"] as String
-            keyPassword = keyPassword ?: localKeystoreProperties["keyPassword"] as String
+            storeFile =
+                file(
+                    keystoreFile
+                        ?: localKeystoreProperties["storeFile"]?.toString()
+                        ?: error("No storeFile provided"),
+                )
+            storePassword =
+                keystorePassword
+                    ?: localKeystoreProperties["storePassword"]?.toString()
+                    ?: error("No storePassword provided")
+            keyAlias =
+                keyAlias
+                    ?: localKeystoreProperties["keyAlias"]?.toString()
+                    ?: error("No keyAlias provided")
+            keyPassword =
+                keyPassword
+                    ?: localKeystoreProperties["keyPassword"]?.toString()
+                    ?: error("No keyPassword provided")
         }
     }
 

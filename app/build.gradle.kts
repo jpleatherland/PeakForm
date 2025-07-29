@@ -1,9 +1,10 @@
 import java.util.Properties
 
-val keystoreFile = System.getenv("KEYSTORE_PATH")
-val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
-val keyAlias = System.getenv("KEY_ALIAS")
-val keyPassword = System.getenv("KEY_PASSWORD")
+
+val keystoreFile = project.findProperty("keystorePath") as String? ?: System.getenv("KEYSTORE_PATH")
+val keystorePassword = project.findProperty("keystorePassword") as String? ?: System.getenv("KEYSTORE_PASSWORD")
+val keyAlias = project.findProperty("keyAlias") as String? ?: System.getenv("KEY_ALIAS")
+val keyPassword = project.findProperty("keyPassword") as String? ?: System.getenv("KEY_PASSWORD")
 
 val localKeystorePropertiesFile = File(rootDir, "keystore.properties")
 val localKeystoreProperties =

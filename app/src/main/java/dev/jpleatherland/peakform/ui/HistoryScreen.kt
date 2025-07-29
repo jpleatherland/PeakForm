@@ -24,46 +24,36 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.jpleatherland.peakform.data.WeightEntry
+import dev.jpleatherland.peakform.util.formatWeight
+import dev.jpleatherland.peakform.util.kgToLb
+import dev.jpleatherland.peakform.util.lbToKg
+import dev.jpleatherland.peakform.viewmodel.SettingsViewModel
+import dev.jpleatherland.peakform.viewmodel.WeightUnit
 import dev.jpleatherland.peakform.viewmodel.WeightViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
-fun HistoryScreen(viewModel: WeightViewModel) {
+fun HistoryScreen(
+    viewModel: WeightViewModel,
+    settingsViewModel: SettingsViewModel,
+) {
     val entries by viewModel.entries.collectAsState(emptyList())
+    val weightUnit by settingsViewModel.weightUnit.collectAsState()
     var editingEntry by remember { mutableStateOf<WeightEntry?>(null) }
 
     val dateFormat = remember { SimpleDateFormat.getDateInstance() }
-    val numberFormat = remember { NumberFormat.getNumberInstance() }
 
     Column(modifier = Modifier.padding(16.dp)) {
         // --- Column Headers ---
         Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "Date",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                text = "Weight",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                text = "Calories",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(modifier = Modifier.width(48.dp)) // For actions
+            Text("Date", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text("Weight", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text("Calories", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(48.dp)) // For actions
         }
 
         HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
@@ -75,17 +65,12 @@ fun HistoryScreen(viewModel: WeightViewModel) {
             items(entries.size) { index ->
                 val entry = entries[index]
                 Card(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                 ) {
                     Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -94,13 +79,13 @@ fun HistoryScreen(viewModel: WeightViewModel) {
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Text(
-                            text = numberFormat.format(entry.weight ?: 0.0),
+                            text = formatWeight(entry.weight ?: 0.0, weightUnit),
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.bodyMedium,
                             textAlign = TextAlign.End,
                         )
                         Text(
-                            text = "${entry.calories} kcal",
+                            text = "${entry.calories ?: ""} kcal",
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.bodyMedium,
                             textAlign = TextAlign.End,
@@ -138,6 +123,7 @@ fun HistoryScreen(viewModel: WeightViewModel) {
                 viewModel.updateEntry(updated)
                 editingEntry = null
             },
+            weightUnit = weightUnit, // Pass the unit here!
         )
     }
 }
@@ -147,6 +133,7 @@ fun EditEntryDialog(
     original: WeightEntry,
     onDismiss: () -> Unit,
     onSave: (WeightEntry) -> Unit,
+    weightUnit: WeightUnit,
 ) {
     val dateFormat =
         remember {
@@ -157,37 +144,36 @@ fun EditEntryDialog(
             DecimalFormat.getInstance(Locale.getDefault()) as DecimalFormat
         }
 
-    // Format with ICU NumberFormatter
-    fun formatWeight(weight: Double): String =
-        NumberFormatter
-            .withLocale(Locale.getDefault())
-            .precision(Precision.maxFraction(1)) // E.g., 75.3
-            .format(weight)
-            .toString()
-
-    fun formatCalories(calories: Int): String =
-        NumberFormatter
-            .withLocale(Locale.getDefault())
-            .format(calories)
-            .toString()
-
-    val safeWeight = original.weight ?: 0.0
-    val safeCalories = original.calories.takeIf { it != null } ?: 0
-    var weightInput by remember { mutableStateOf(formatWeight(safeWeight)) }
-    var caloriesInput by remember { mutableStateOf(formatCalories(safeCalories)) }
-
-    // Parse with ICU DecimalFormat (still locale aware)
-    val parsedWeight =
-        try {
-            decimalFormat.parse(weightInput)?.toDouble() ?: safeWeight
-        } catch (e: Exception) {
-            safeWeight
+    // Display the original weight in the user's preferred unit
+    val safeWeightKg = original.weight ?: 0.0
+    val displayWeight =
+        when (weightUnit) {
+            WeightUnit.KG -> safeWeightKg
+            WeightUnit.LB -> safeWeightKg.kgToLb()
         }
+    val safeCalories = original.calories ?: 0
+
+    var weightInput by remember { mutableStateOf(decimalFormat.format(displayWeight)) }
+    var caloriesInput by remember { mutableStateOf(decimalFormat.format(safeCalories)) }
+
+    // Parse user input in current unit, then convert to kg for storage
+    val parsedWeightUserUnit =
+        try {
+            decimalFormat.parse(weightInput)?.toDouble() ?: displayWeight
+        } catch (e: Exception) {
+            displayWeight
+        }
+    val parsedWeightKg =
+        when (weightUnit) {
+            WeightUnit.KG -> parsedWeightUserUnit
+            WeightUnit.LB -> parsedWeightUserUnit.lbToKg()
+        }
+
     val parsedCalories =
         try {
             decimalFormat.parse(caloriesInput)?.toInt() ?: safeCalories
         } catch (e: Exception) {
-            original.calories
+            safeCalories
         }
 
     AlertDialog(
@@ -211,7 +197,7 @@ fun EditEntryDialog(
                 OutlinedTextField(
                     value = weightInput,
                     onValueChange = { input -> weightInput = input },
-                    label = { Text("Weight (kg)") },
+                    label = { Text("Weight (${weightUnit.name.lowercase()})") },
                     keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -230,12 +216,12 @@ fun EditEntryDialog(
             Button(
                 onClick = {
                     val newWeightSource =
-                        if (parsedWeight != (original.weight ?: 0.0)) "user" else original.weightSource
+                        if (parsedWeightKg != (original.weight ?: 0.0)) "user" else original.weightSource
                     val newCaloriesSource =
                         if (parsedCalories != original.calories) "user" else original.caloriesSource
                     onSave(
                         original.copy(
-                            weight = parsedWeight,
+                            weight = parsedWeightKg, // Always kg!
                             calories = parsedCalories,
                             weightSource = newWeightSource,
                             caloriesSource = newCaloriesSource,

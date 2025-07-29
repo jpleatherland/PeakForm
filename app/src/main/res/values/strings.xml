@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">PeakForm</string>
-    <string name="marker_weight_date">Weight: %1$.1f kg\n%2$s</string>
+    <string name="marker_weight_date">Weight: %1$.1f %3$s\n%2$s</string>
     <string name="marker_calories_date">Calories: %1$d kcal\n%2$s</string>
 </resources>

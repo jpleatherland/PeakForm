@@ -21,10 +21,10 @@ fun AppNavHost(
 ) {
     NavHost(navController = navController, startDestination = startDestination) {
         composable(Screen.Entry.route) { DailyEntryScreen(viewModel, settingsViewModel) }
-        composable(Screen.Charts.route) { ChartScreen(viewModel) }
+        composable(Screen.Charts.route) { ChartScreen(viewModel, settingsViewModel) }
         composable(Screen.Goals.route) { GoalScreen(viewModel, settingsViewModel) }
-        composable(Screen.History.route) { HistoryScreen(viewModel) }
-        composable(Screen.Settings.route) { SettingsScreen(viewModel) }
+        composable(Screen.History.route) { HistoryScreen(viewModel, settingsViewModel) }
+        composable(Screen.Settings.route) { SettingsScreen(viewModel, settingsViewModel) }
         appNavHostAddDebugRoutes(
             navController,
             viewModel,

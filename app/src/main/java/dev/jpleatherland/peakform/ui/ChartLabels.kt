@@ -7,11 +7,13 @@ import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.utils.MPPointF
 import dev.jpleatherland.peakform.R
+import dev.jpleatherland.peakform.viewmodel.WeightUnit
 
 class ChartLabels(
     context: Context,
     layoutResource: Int,
     private val labelRes: Int,
+    private val weightUnit: WeightUnit? = null, // Only set for weight charts
 ) : MarkerView(context, layoutResource) {
     private val tvContent: TextView = findViewById(R.id.tvContent)
 
@@ -31,20 +33,23 @@ class ChartLabels(
                         date,
                     )
             } else {
-                val weight = e.y
+                val weight = e.y.toDouble()
+                val unitLabel =
+                    when (weightUnit) {
+                        WeightUnit.KG, null -> "kg"
+                        WeightUnit.LB -> "lb"
+                    }
                 tvContent.text =
                     context.getString(
                         R.string.marker_weight_date,
                         weight,
                         date,
+                        unitLabel,
                     )
             }
         }
         super.refreshContent(e, highlight)
     }
 
-    override fun getOffset(): MPPointF {
-        // Centers the MarkerView above the point
-        return MPPointF(-(width / 2).toFloat(), -height.toFloat())
-    }
+    override fun getOffset(): MPPointF = MPPointF(-(width / 2).toFloat(), -height.toFloat())
 }

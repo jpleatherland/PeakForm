@@ -23,7 +23,7 @@ import dev.jpleatherland.peakform.viewmodel.WeightViewModel
 @Composable
 fun SettingsScreen(
     viewModel: WeightViewModel,
-    settingsViewModel: SettingsViewModel = viewModel(),
+    settingsViewModel: SettingsViewModel,
 ) {
     val weightUnit by settingsViewModel.weightUnit.collectAsState()
     val isSyncing by viewModel.syncInProgress.collectAsState()
@@ -39,6 +39,21 @@ fun SettingsScreen(
             HealthPermission.getWritePermission(NutritionRecord::class),
         )
 
+    // Remember last unit so we don't Toast on first load
+    var lastUnit by remember { mutableStateOf(weightUnit) }
+
+    // Show a Toast if the unit has changed
+    LaunchedEffect(weightUnit) {
+        if (lastUnit != weightUnit) {
+            Toast
+                .makeText(
+                    context,
+                    "Weight unit changed to ${if (weightUnit == WeightUnit.KG) "kg" else "lb"}",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            lastUnit = weightUnit
+        }
+    }
     var showWriteDialog by remember { mutableStateOf(false) }
     val permissionLauncher =
         rememberLauncherForActivityResult(

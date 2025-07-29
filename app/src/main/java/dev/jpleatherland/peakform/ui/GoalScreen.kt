@@ -25,6 +25,7 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,7 +45,10 @@ import dev.jpleatherland.peakform.data.GoalType
 import dev.jpleatherland.peakform.data.RateMode
 import dev.jpleatherland.peakform.data.RatePreset
 import dev.jpleatherland.peakform.util.GoalCalculations
+import dev.jpleatherland.peakform.util.kgToLb
+import dev.jpleatherland.peakform.util.lbToKg
 import dev.jpleatherland.peakform.viewmodel.SettingsViewModel
+import dev.jpleatherland.peakform.viewmodel.WeightUnit
 import dev.jpleatherland.peakform.viewmodel.WeightViewModel
 import java.util.Calendar
 import java.util.Date
@@ -59,6 +63,7 @@ fun GoalScreen(
     val currentGoal by viewModel.goal.collectAsState()
     val avgWeight by viewModel.sevenDayAvgWeight.collectAsState()
     val maintenance by viewModel.estimatedMaintenanceCalories.collectAsState()
+    val weightUnit by settingsViewModel.weightUnit.collectAsState()
 
     // UI state
     var goalType by remember { mutableStateOf(GoalType.CUT) }
@@ -74,7 +79,13 @@ fun GoalScreen(
     LaunchedEffect(currentGoal) {
         currentGoal?.let { goal ->
             goalType = goal.type
-            goalWeight = goal.goalWeight?.toString() ?: ""
+            // Always convert stored kg to user unit for display
+            goalWeight = goal.goalWeight?.let {
+                when (weightUnit) {
+                    WeightUnit.KG -> it.toString()
+                    WeightUnit.LB -> String.format(Locale.getDefault(), "%.1f", it.kgToLb())
+                }
+            } ?: ""
             timeMode = goal.timeMode
             targetDate = goal.targetDate?.let { Date(it) }
             durationWeeks = goal.durationWeeks?.toString() ?: ""
@@ -82,7 +93,13 @@ fun GoalScreen(
             selectedPreset = goal.ratePreset ?: RatePreset.LEAN
             rateInput =
                 when (rateMode) {
-                    RateMode.KG_PER_WEEK -> goal.ratePerWeek?.toString() ?: ""
+                    RateMode.KG_PER_WEEK ->
+                        goal.ratePerWeek?.let {
+                            when (weightUnit) {
+                                WeightUnit.KG -> it.toString()
+                                WeightUnit.LB -> String.format(Locale.getDefault(), "%.2f", it.kgToLb())
+                            }
+                        } ?: ""
                     RateMode.BODYWEIGHT_PERCENT -> goal.ratePercent?.toString() ?: ""
                     RateMode.PRESET -> "" // No input for preset
                 }
@@ -110,18 +127,37 @@ fun GoalScreen(
     val needsDate = timeMode == GoalTimeMode.BY_DATE
 
     // ========== LIVE PROJECTION (using all UI state) ==========
+
+    // Parse weight from input in user units, store as kg
+    fun parseWeightInput(text: String): Double? =
+        text.toDoubleOrNull()?.let { value ->
+            when (weightUnit) {
+                WeightUnit.KG -> value
+                WeightUnit.LB -> value.lbToKg()
+            }
+        }
+
+    // Parse rate input (kg or lb per week)
+    fun parseRateInput(text: String): Double? =
+        text.toDoubleOrNull()?.let { value ->
+            when (weightUnit) {
+                WeightUnit.KG -> value
+                WeightUnit.LB -> value.lbToKg()
+            }
+        }
+
     val projection =
         GoalCalculations.project(
             goal =
                 Goal(
                     type = goalType,
-                    goalWeight = goalWeight.toDoubleOrNull(),
+                    goalWeight = parseWeightInput(goalWeight),
                     timeMode = timeMode,
                     targetDate = targetDate?.time,
                     rateMode = rateMode,
                     ratePercent = if (rateMode == RateMode.BODYWEIGHT_PERCENT) rateInput.toDoubleOrNull() else null,
                     ratePreset = if (rateMode == RateMode.PRESET) selectedPreset else null,
-                    ratePerWeek = if (rateMode == RateMode.KG_PER_WEEK) rateInput.toDoubleOrNull() else null,
+                    ratePerWeek = if (rateMode == RateMode.KG_PER_WEEK) parseRateInput(rateInput) else null,
                     durationWeeks = durationWeeks.toIntOrNull(),
                 ),
             currentWeight = currentWeight,
@@ -173,7 +209,7 @@ fun GoalScreen(
             OutlinedTextField(
                 value = goalWeight,
                 onValueChange = { goalWeight = it },
-                label = { Text("Target Weight (kg)") },
+                label = { Text("Target Weight (${weightUnit.name.lowercase()})") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
             )
@@ -225,13 +261,14 @@ fun GoalScreen(
                 options = RateMode.entries,
                 selected = rateMode,
                 onSelected = { rateMode = it },
+                labelForOption = { it.displayName(weightUnit) },
             )
             when (rateMode) {
                 RateMode.KG_PER_WEEK -> {
                     OutlinedTextField(
                         value = rateInput,
                         onValueChange = { rateInput = it },
-                        label = { Text("Rate (kg/week)") },
+                        label = { Text("Rate (${weightUnit.name.lowercase()}/week)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                     )
@@ -257,9 +294,10 @@ fun GoalScreen(
                 }
             }
         }
-// ========== DYNAMIC DERIVED FIELDS ==========
 
-// BY DATE: Show required rate when both weight and date are present
+        // ===== DYNAMIC DERIVED FIELDS (converted to user units where relevant) =====
+
+        // BY DATE: Show required rate when both weight and date are present
         if (
             timeMode == GoalTimeMode.BY_DATE &&
             goalWeight.isNotBlank() &&
@@ -267,28 +305,45 @@ fun GoalScreen(
         ) {
             projection.rateKgPerWeek
                 .takeIf { it.isFinite() && it != 0.0 }
-                ?.let { rate ->
+                ?.let { rateKg ->
+                    val rateDisplay =
+                        when (weightUnit) {
+                            WeightUnit.KG -> rateKg
+                            WeightUnit.LB -> rateKg.kgToLb()
+                        }
                     Text(
-                        "Required rate: ${String.format("%.2f", kotlin.math.abs(rate))} kg/week",
+                        "Required rate: ${String.format(
+                            Locale.getDefault(),
+                            "%.2f",
+                            kotlin.math.abs(rateDisplay),
+                        )} ${weightUnit.name.lowercase()}/week",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
         }
 
-// BY RATE: Show derived duration/date/weight change if goalWeight is set and any rate (input or preset) is selected
+        // BY RATE: Show derived duration/date/weight change if goalWeight is set and any rate (input or preset) is selected
         if (
             timeMode == GoalTimeMode.BY_RATE &&
             goalWeight.isNotBlank() &&
             (rateInput.isNotBlank() || rateMode == RateMode.PRESET)
         ) {
-            // Show actual rate if preset
             if (rateMode == RateMode.PRESET) {
                 projection.rateKgPerWeek
                     .takeIf { it.isFinite() && it != 0.0 }
-                    ?.let { rate ->
+                    ?.let { rateKg ->
+                        val rateDisplay =
+                            when (weightUnit) {
+                                WeightUnit.KG -> rateKg
+                                WeightUnit.LB -> rateKg.kgToLb()
+                            }
                         Text(
-                            "Selected rate: ${String.format("%.2f", kotlin.math.abs(rate))} kg/week (${selectedPreset.formatEnumName()})",
+                            "Selected rate: ${String.format(
+                                Locale.getDefault(),
+                                "%.2f",
+                                kotlin.math.abs(rateDisplay),
+                            )} ${weightUnit.name.lowercase()}/week (${selectedPreset.formatEnumName()})",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -296,9 +351,18 @@ fun GoalScreen(
             } else if (rateInput.isNotBlank()) {
                 projection.rateKgPerWeek
                     .takeIf { it.isFinite() && it != 0.0 }
-                    ?.let { rate ->
+                    ?.let { rateKg ->
+                        val rateDisplay =
+                            when (weightUnit) {
+                                WeightUnit.KG -> rateKg
+                                WeightUnit.LB -> rateKg.kgToLb()
+                            }
                         Text(
-                            "Selected rate: ${String.format("%.2f", kotlin.math.abs(rate))} kg/week",
+                            "Selected rate: ${String.format(
+                                Locale.getDefault(),
+                                "%.2f",
+                                kotlin.math.abs(rateDisplay),
+                            )} ${weightUnit.name.lowercase()}/week",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -317,28 +381,41 @@ fun GoalScreen(
                 }
             projection.weightChange
                 ?.takeIf { it.isFinite() && it != 0.0 }
-                ?.let { change ->
+                ?.let { changeKg ->
+                    val changeDisplay =
+                        when (weightUnit) {
+                            WeightUnit.KG -> changeKg
+                            WeightUnit.LB -> changeKg.kgToLb()
+                        }
                     Text(
-                        "Total weight change: ${String.format("%.1f kg", change)}",
+                        "Total weight change: ${String.format(Locale.getDefault(), "%.1f", changeDisplay)} ${weightUnit.name.lowercase()}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
         }
 
-// BY DURATION: Show projected final weight, total change, rate, and end date
+        // BY DURATION: Show projected final weight, total change, rate, and end date
         if (
             timeMode == GoalTimeMode.BY_DURATION &&
             durationWeeks.isNotBlank() &&
             (rateInput.isNotBlank() || rateMode == RateMode.PRESET)
         ) {
-            // Show actual rate if preset
             if (rateMode == RateMode.PRESET) {
                 projection.rateKgPerWeek
                     .takeIf { it.isFinite() && it != 0.0 }
-                    ?.let { rate ->
+                    ?.let { rateKg ->
+                        val rateDisplay =
+                            when (weightUnit) {
+                                WeightUnit.KG -> rateKg
+                                WeightUnit.LB -> rateKg.kgToLb()
+                            }
                         Text(
-                            "Selected rate: ${String.format("%.2f", kotlin.math.abs(rate))} kg/week (${selectedPreset.formatEnumName()})",
+                            "Selected rate: ${String.format(
+                                Locale.getDefault(),
+                                "%.2f",
+                                kotlin.math.abs(rateDisplay),
+                            )} ${weightUnit.name.lowercase()}/week (${selectedPreset.formatEnumName()})",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -346,9 +423,18 @@ fun GoalScreen(
             } else if (rateInput.isNotBlank()) {
                 projection.rateKgPerWeek
                     .takeIf { it.isFinite() && it != 0.0 }
-                    ?.let { rate ->
+                    ?.let { rateKg ->
+                        val rateDisplay =
+                            when (weightUnit) {
+                                WeightUnit.KG -> rateKg
+                                WeightUnit.LB -> rateKg.kgToLb()
+                            }
                         Text(
-                            "Selected rate: ${String.format("%.2f", kotlin.math.abs(rate))} kg/week",
+                            "Selected rate: ${String.format(
+                                Locale.getDefault() ,
+                                "%.2f",
+                                kotlin.math.abs(rateDisplay),
+                            )} ${weightUnit.name.lowercase()}/week",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -356,18 +442,32 @@ fun GoalScreen(
             }
             projection.finalWeight
                 ?.takeIf { it.isFinite() }
-                ?.let { finalWeight ->
+                ?.let { finalKg ->
+                    val finalDisplay =
+                        when (weightUnit) {
+                            WeightUnit.KG -> finalKg
+                            WeightUnit.LB -> finalKg.kgToLb()
+                        }
                     Text(
-                        "Projected final weight: ${String.format("%.1f kg", finalWeight)}",
+                        "Projected final weight: ${String.format(
+                            Locale.getDefault(),
+                            "%.1f",
+                            finalDisplay,
+                        )} ${weightUnit.name.lowercase()}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
             projection.weightChange
                 ?.takeIf { it.isFinite() && it != 0.0 }
-                ?.let { change ->
+                ?.let { changeKg ->
+                    val changeDisplay =
+                        when (weightUnit) {
+                            WeightUnit.KG -> changeKg
+                            WeightUnit.LB -> changeKg.kgToLb()
+                        }
                     Text(
-                        "Total weight change: ${String.format("%.1f kg", change)}",
+                        "Total weight change: ${String.format(Locale.getDefault(), "%.1f", changeDisplay)} ${weightUnit.name.lowercase()}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -398,11 +498,11 @@ fun GoalScreen(
             onClick = {
                 val goal =
                     Goal(
-                        goalWeight = goalWeight.toDoubleOrNull(),
+                        goalWeight = parseWeightInput(goalWeight),
                         type = goalType,
                         timeMode = timeMode,
                         targetDate = targetDate?.time,
-                        ratePerWeek = if (rateMode == RateMode.KG_PER_WEEK) rateInput.toDoubleOrNull() else null,
+                        ratePerWeek = if (rateMode == RateMode.KG_PER_WEEK) parseRateInput(rateInput) else null,
                         durationWeeks = durationWeeks.toIntOrNull(),
                         rateMode = rateMode,
                         ratePercent = if (rateMode == RateMode.BODYWEIGHT_PERCENT) rateInput.toDoubleOrNull() else null,
@@ -417,16 +517,12 @@ fun GoalScreen(
                     .padding(top = 24.dp),
             enabled =
                 !isImpossibleGoal &&
-                    // Enforce "required field" logic:
                     ((needsGoalWeight && goalWeight.isNotBlank()) || !needsGoalWeight) &&
                     ((needsDuration && durationWeeks.isNotBlank()) || !needsDuration) &&
                     ((needsRateInput && (rateInput.isNotBlank() || rateMode == RateMode.PRESET)) || !needsRateInput),
         ) {
             Text("Save Goal")
         }
-
-        // (Optional) Show summary or explanation text for user here.
-        // === PROJECTIONS ===
 
         Card(
             modifier =
@@ -483,7 +579,6 @@ fun GoalScreen(
                             when (timeMode) {
                                 GoalTimeMode.BY_DURATION, GoalTimeMode.BY_RATE -> "Goal Date:"
                                 GoalTimeMode.BY_DATE -> "Target Goal Date:"
-                                else -> "Goal Date:"
                             }
                         Text(
                             label,
@@ -500,7 +595,7 @@ fun GoalScreen(
                         )
                     }
                 }
-                projection.finalWeight?.let { finalWeight ->
+                projection.finalWeight?.let { finalKg ->
                     Spacer(Modifier.height(6.dp))
                     Row(
                         Modifier.fillMaxWidth(),
@@ -510,7 +605,11 @@ fun GoalScreen(
                             when (timeMode) {
                                 GoalTimeMode.BY_DURATION -> "Estimated Final Weight:"
                                 GoalTimeMode.BY_DATE, GoalTimeMode.BY_RATE -> "Target Weight:"
-                                else -> "Final Weight:"
+                            }
+                        val finalDisplay =
+                            when (weightUnit) {
+                                WeightUnit.KG -> finalKg
+                                WeightUnit.LB -> finalKg.kgToLb()
                             }
                         Text(
                             label,
@@ -518,13 +617,13 @@ fun GoalScreen(
                             modifier = Modifier.alignByBaseline(),
                         )
                         Text(
-                            String.format(Locale.UK, "%.1f kg", finalWeight),
+                            String.format("%.1f ${weightUnit.name.lowercase()}", finalDisplay),
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.alignByBaseline(),
                         )
                     }
                 }
-                projection.weightChange?.let { weightChange ->
+                projection.weightChange?.let { changeKg ->
                     Spacer(Modifier.height(6.dp))
                     Row(
                         Modifier.fillMaxWidth(),
@@ -535,8 +634,13 @@ fun GoalScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.alignByBaseline(),
                         )
+                        val changeDisplay =
+                            when (weightUnit) {
+                                WeightUnit.KG -> changeKg
+                                WeightUnit.LB -> changeKg.kgToLb()
+                            }
                         Text(
-                            String.format(Locale.UK, "%.1f kg", weightChange),
+                            String.format("%.1f ${weightUnit.name.lowercase()}", changeDisplay),
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.alignByBaseline(),
                         )
@@ -547,6 +651,13 @@ fun GoalScreen(
     }
 }
 
+fun RateMode.displayName(weightUnit: WeightUnit): String =
+    when (this) {
+        RateMode.KG_PER_WEEK -> "${if (weightUnit == WeightUnit.KG) "kg" else "lb"}/week"
+        RateMode.BODYWEIGHT_PERCENT -> "% bodyweight/week"
+        RateMode.PRESET -> "Preset"
+    }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun <T : Enum<T>> DropdownSelector(
@@ -554,6 +665,7 @@ fun <T : Enum<T>> DropdownSelector(
     options: List<T>,
     selected: T,
     onSelected: (T) -> Unit,
+    labelForOption: (T) -> String = { it.formatEnumName() },
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -563,14 +675,14 @@ fun <T : Enum<T>> DropdownSelector(
     ) {
         OutlinedTextField(
             readOnly = true,
-            value = selected.name.formatEnumName(),
+            value = labelForOption(selected),
             onValueChange = {}, // No editing
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier =
                 Modifier
-                    .menuAnchor()
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .menuAnchor(MenuAnchorType.PrimaryEditable),
         )
         DropdownMenu(
             expanded = expanded,
@@ -579,7 +691,7 @@ fun <T : Enum<T>> DropdownSelector(
             options.forEach { option ->
                 DropdownMenuItem(
                     text = {
-                        Text(option.name.formatEnumName())
+                        Text(labelForOption(option))
                     },
                     onClick = {
                         onSelected(option)

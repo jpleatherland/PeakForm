@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontSynthesis.Companion.Weight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.github.mikephil.charting.charts.LineChart
@@ -33,6 +34,10 @@ import dev.jpleatherland.peakform.data.Goal
 import dev.jpleatherland.peakform.data.GoalSegment
 import dev.jpleatherland.peakform.data.WeightEntry
 import dev.jpleatherland.peakform.util.GoalProjection
+import dev.jpleatherland.peakform.util.WeightUnitValueFormatter
+import dev.jpleatherland.peakform.util.kgToLb
+import dev.jpleatherland.peakform.viewmodel.SettingsViewModel
+import dev.jpleatherland.peakform.viewmodel.WeightUnit
 import dev.jpleatherland.peakform.viewmodel.WeightViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -44,6 +49,7 @@ fun ChartLayout(
     goal: Goal?,
     segments: List<GoalSegment>,
     projection: GoalProjection?,
+    weightUnit: WeightUnit,
 ) {
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -67,6 +73,7 @@ fun ChartLayout(
                 goal = goal,
                 segments = segments,
                 projection = projection,
+                weightUnit = weightUnit,
                 modifier =
                     chartModifier
                         .height(200.dp)
@@ -100,6 +107,7 @@ fun ChartLayout(
                     goal = goal,
                     segments = segments,
                     projection = projection,
+                    weightUnit = weightUnit,
                     modifier =
                         Modifier
                             .fillMaxSize()
@@ -129,13 +137,14 @@ fun WeightChart(
     goal: Goal?,
     segments: List<GoalSegment>,
     projection: GoalProjection?,
+    weightUnit: WeightUnit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val dateFormatter = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
 
     AndroidView(factory = { context ->
-        val markerView = ChartLabels(context, R.layout.marker_view, R.string.marker_weight_date)
+        val markerView = ChartLabels(context, R.layout.marker_view, R.string.marker_weight_date, weightUnit)
         LineChart(context).apply {
             val chartHeightDp = 300.dp
             val heightPx = with(density) { chartHeightDp.roundToPx() }
@@ -155,6 +164,8 @@ fun WeightChart(
 
                     override fun getFormattedValue(value: Float): String = sdf.format(Date(TimeUnit.DAYS.toMillis(value.toLong())))
                 }
+            axisLeft.valueFormatter = WeightUnitValueFormatter(weightUnit)
+            axisRight.valueFormatter = WeightUnitValueFormatter(weightUnit)
             marker = markerView
         }
     }, update = { chart ->
@@ -166,7 +177,11 @@ fun WeightChart(
                 .sortedBy { it.date }
                 .map {
                     val x = TimeUnit.MILLISECONDS.toDays(it.date).toFloat()
-                    val y = it.weight!!.toFloat()
+                    val y =
+                        when (weightUnit) {
+                            WeightUnit.KG -> it.weight!!.toFloat()
+                            WeightUnit.LB -> it.weight!!.kgToLb().toFloat()
+                        }
                     val dateString = dateFormatter.format(Date(it.date))
                     Entry(x, y).apply {
                         data = "type:weight|$dateString"
@@ -174,7 +189,13 @@ fun WeightChart(
                 }
 
         val lineDataSet =
-            LineDataSet(dataPoints, "Weight (kg)").apply {
+            LineDataSet(
+                dataPoints,
+                when (weightUnit) {
+                    WeightUnit.KG -> "Weight (kg)"
+                    WeightUnit.LB -> "Weight (lb)"
+                },
+            ).apply {
                 color = Color.BLUE
                 valueTextColor = Color.DKGRAY
                 setDrawCircles(true)
@@ -182,7 +203,8 @@ fun WeightChart(
             }
 
         // Trend line calculation (linear regression through actual data)
-        val trendPoints = calculateTrendLine(dataPoints)
+        val trendPoints =
+            calculateTrendLine(dataPoints)
 
         val trendDataSet =
             LineDataSet(trendPoints, "Actual Trend").apply {
@@ -198,12 +220,26 @@ fun WeightChart(
         val goalProjectionPoints =
             if (goal != null && projection != null) {
                 buildGoalProjectionEntries(goal, segments, entries, projection)
+                    .map { entry ->
+                        Entry(
+                            entry.x,
+                            when (weightUnit) {
+                                WeightUnit.KG -> entry.y
+                                WeightUnit.LB -> entry.y * 2.20462f
+                            },
+                        )
+                    }
             } else {
                 emptyList()
             }
-
         val projectionDataSet =
-            LineDataSet(goalProjectionPoints, "Goal Projection").apply {
+            LineDataSet(
+                goalProjectionPoints,
+                when (weightUnit) {
+                    WeightUnit.KG -> "Goal Projection (kg)"
+                    WeightUnit.LB -> "Goal Projection (lb)"
+                },
+            ).apply {
                 color = Color.GREEN
                 lineWidth = 2f
                 setDrawCircles(false)
@@ -454,15 +490,20 @@ fun buildGoalCaloriesEntries(
 }
 
 @Composable
-fun ChartScreen(viewModel: WeightViewModel) {
+fun ChartScreen(
+    viewModel: WeightViewModel,
+    settingsViewModel: SettingsViewModel,
+) {
     val entries by viewModel.entries.collectAsState()
     val goal by viewModel.goal.collectAsState()
 
     val segments by viewModel.goalSegments.collectAsState()
     val goalProjection by viewModel.goalProjection.collectAsState()
 
+    val weightUnit by settingsViewModel.weightUnit.collectAsState()
+
     Log.d("ChartScreen", "Segments count: ${segments.size}")
     val entriesAsc = entries.sortedBy { it.date }
 
-    ChartLayout(entries = entriesAsc, goal = goal, segments = segments, projection = goalProjection)
+    ChartLayout(entries = entriesAsc, goal = goal, segments = segments, weightUnit = weightUnit, projection = goalProjection)
 }

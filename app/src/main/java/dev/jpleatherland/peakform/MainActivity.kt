@@ -22,6 +22,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.*
 import dev.jpleatherland.peakform.data.GoalRepository
 import dev.jpleatherland.peakform.data.GoalSegmentRepository
+import dev.jpleatherland.peakform.data.SettingsViewModelFactory
 import dev.jpleatherland.peakform.data.WeightRepository
 import dev.jpleatherland.peakform.data.WeightViewModelFactory
 import dev.jpleatherland.peakform.data.provideDatabase
@@ -41,8 +42,9 @@ class MainActivity : ComponentActivity() {
         val goalSegmentRepo = GoalSegmentRepository(db.goalSegmentDao())
         val healthConnectClient = HealthConnectClient.getOrCreate(this)
         val factory = WeightViewModelFactory(repo, goalRepo, goalSegmentRepo, healthConnectClient)
+        val settingsFactory = SettingsViewModelFactory(application)
         val viewModel = ViewModelProvider(this, factory)[WeightViewModel::class.java]
-        val settingsViewModel = ViewModelProvider(this, factory)[SettingsViewModel::class.java]
+        val settingsViewModel = ViewModelProvider(this, settingsFactory)[SettingsViewModel::class.java]
 
         setContent {
             PeakFormTheme {

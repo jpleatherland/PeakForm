@@ -42,7 +42,11 @@ import dev.jpleatherland.peakform.data.GoalType
 import dev.jpleatherland.peakform.data.RateMode
 import dev.jpleatherland.peakform.util.GoalCalculations
 import dev.jpleatherland.peakform.util.asDayEpochMillis
+import dev.jpleatherland.peakform.util.formatWeight
+import dev.jpleatherland.peakform.util.kgToLb
+import dev.jpleatherland.peakform.util.lbToKg
 import dev.jpleatherland.peakform.viewmodel.SettingsViewModel
+import dev.jpleatherland.peakform.viewmodel.WeightUnit
 import dev.jpleatherland.peakform.viewmodel.WeightViewModel
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -57,6 +61,7 @@ fun DailyEntryScreen(
 ) {
     val context = LocalContext.current
     val entries by viewModel.entries.collectAsState()
+    val weightUnit by settingsViewModel.weightUnit.collectAsState()
     var weight by remember { mutableStateOf("") }
     var calories by remember { mutableStateOf("") }
 
@@ -64,7 +69,6 @@ fun DailyEntryScreen(
     val today = remember { calendar.time }
     var selectedDate by remember { mutableStateOf<Date?>(null) }
 
-    // --- Find Existing Entry for Date (ignores time, only date) ---
     fun Date.sameDayAs(other: Date): Boolean {
         val cal1 = Calendar.getInstance().apply { time = this@sameDayAs }
         val cal2 = Calendar.getInstance().apply { time = other }
@@ -75,11 +79,7 @@ fun DailyEntryScreen(
     LaunchedEffect(entries, selectedDate) {
         if (selectedDate == null && entries.isNotEmpty()) {
             val alreadyLoggedToday =
-                entries.any { entry ->
-                    entry.date.let {
-                        Date(it).sameDayAs(today)
-                    }
-                }
+                entries.any { entry -> Date(entry.date).sameDayAs(today) }
             selectedDate =
                 if (alreadyLoggedToday) null else today
         }
@@ -87,14 +87,19 @@ fun DailyEntryScreen(
 
     val existingEntry =
         selectedDate?.let { nonNullDate ->
-            entries.find {
-                it.date.let { entryDate -> Date(entryDate).sameDayAs(nonNullDate) }
-            }
+            entries.find { Date(it.date).sameDayAs(nonNullDate) }
         }
 
-    LaunchedEffect(existingEntry) {
+    // Show previous entry in user's preferred unit
+    LaunchedEffect(existingEntry, weightUnit) {
         if (existingEntry != null) {
-            weight = String.format(Locale.getDefault(), "%.2f", existingEntry.weight ?: "")
+            val entryWeightKg = existingEntry.weight ?: 0.0
+            val entryWeightDisplay =
+                when (weightUnit) {
+                    WeightUnit.KG -> entryWeightKg
+                    WeightUnit.LB -> entryWeightKg.kgToLb()
+                }
+            weight = String.format(Locale.getDefault(), "%.2f", entryWeightDisplay)
             calories = existingEntry.calories?.toString() ?: ""
         } else {
             weight = ""
@@ -107,7 +112,7 @@ fun DailyEntryScreen(
     val maintenanceEntryCount by viewModel.maintenanceEntryCount.collectAsState()
     val maintenanceEstimateErrorMessage by viewModel.maintenanceEstimateErrorMessage.collectAsState()
     val goal by viewModel.goal.collectAsState()
-    val goalProgress by viewModel.goalProgress.collectAsState() // If you want to keep using this, fine!
+    val goalProgress by viewModel.goalProgress.collectAsState()
 
     // Use 7-day avg if present, else last entry, else fallback
     val currentWeight = avgWeight ?: entries.lastOrNull()?.weight ?: 70.0
@@ -131,7 +136,15 @@ fun DailyEntryScreen(
         )
 
     val sdf = SimpleDateFormat("dd/MM", Locale.getDefault())
-    val numberFormat = NumberFormat.getNumberInstance()
+
+    // --- Weight Input Parsing ---
+    fun parseWeightInput(text: String): Double? =
+        text.toDoubleOrNull()?.let { value ->
+            when (weightUnit) {
+                WeightUnit.KG -> value
+                WeightUnit.LB -> value.lbToKg()
+            }
+        }
 
     Column(
         modifier =
@@ -163,11 +176,12 @@ fun DailyEntryScreen(
             }
                 ?: Text("Select Date")
         }
+
         selectedDate?.let { nonNullDate ->
             OutlinedTextField(
                 value = weight,
                 onValueChange = { weight = it },
-                label = { Text("Enter weight (kg)") },
+                label = { Text("Enter weight (${weightUnit.name.lowercase()})") },
                 keyboardOptions =
                     KeyboardOptions.Default.copy(
                         keyboardType = KeyboardType.Decimal,
@@ -206,21 +220,11 @@ fun DailyEntryScreen(
 
             Button(
                 onClick = {
-                    val w = weight.toDoubleOrNull()
+                    val w = parseWeightInput(weight)
                     val c = calories.toIntOrNull()
                     val d = nonNullDate.asDayEpochMillis()
-                    val ws =
-                        if (w != null) {
-                            "user"
-                        } else {
-                            null
-                        }
-                    val cs =
-                        if (c != null) {
-                            "user"
-                        } else {
-                            null
-                        }
+                    val ws = if (w != null) "user" else null
+                    val cs = if (c != null) "user" else null
 
                     if (w != null || c != null) {
                         viewModel.addEntry(w, c, d, ws, cs) { success ->
@@ -253,7 +257,10 @@ fun DailyEntryScreen(
             ) {
                 Column(Modifier.padding(16.dp)) {
                     Text("7-Day Rolling Average Weight", style = MaterialTheme.typography.titleMedium)
-                    Text(text = numberFormat.format(it), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = formatWeight(it, weightUnit),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
                 }
             }
         }
@@ -385,13 +392,14 @@ fun DailyEntryScreen(
                                     GoalTimeMode.BY_DATE, GoalTimeMode.BY_RATE -> "Target Weight:"
                                     else -> "Final Weight:"
                                 }
+                            val displayWeight = formatWeight(finalWeight, weightUnit)
                             Text(
                                 label,
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.alignByBaseline(),
                             )
                             Text(
-                                String.format(Locale.UK, "%.1f kg", finalWeight),
+                                displayWeight,
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.alignByBaseline(),
                             )
@@ -409,7 +417,7 @@ fun DailyEntryScreen(
                                 modifier = Modifier.alignByBaseline(),
                             )
                             Text(
-                                String.format(Locale.UK, "%.1f kg", weightChange),
+                                formatWeight(weightChange, weightUnit),
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.alignByBaseline(),
                             )
@@ -418,7 +426,6 @@ fun DailyEntryScreen(
                 } ?: Text("No active goal set", style = MaterialTheme.typography.bodyMedium)
             }
         }
-
         Spacer(Modifier.height(4.dp))
     }
 }

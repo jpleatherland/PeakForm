@@ -6,8 +6,11 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -33,10 +36,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import dev.jpleatherland.peakform.data.Goal
+import dev.jpleatherland.peakform.data.GoalTimeMode
 import dev.jpleatherland.peakform.data.GoalType
 import dev.jpleatherland.peakform.data.RateMode
 import dev.jpleatherland.peakform.util.GoalCalculations
 import dev.jpleatherland.peakform.util.asDayEpochMillis
+import dev.jpleatherland.peakform.viewmodel.SettingsViewModel
 import dev.jpleatherland.peakform.viewmodel.WeightViewModel
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -45,7 +51,10 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun DailyEntryScreen(viewModel: WeightViewModel) {
+fun DailyEntryScreen(
+    viewModel: WeightViewModel,
+    settingsViewModel: SettingsViewModel,
+) {
     val context = LocalContext.current
     val entries by viewModel.entries.collectAsState()
     var weight by remember { mutableStateOf("") }
@@ -96,6 +105,7 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
     val avgWeight by viewModel.sevenDayAvgWeight.collectAsState()
     val maintenance by viewModel.estimatedMaintenanceCalories.collectAsState()
     val maintenanceEntryCount by viewModel.maintenanceEntryCount.collectAsState()
+    val maintenanceEstimateErrorMessage by viewModel.maintenanceEstimateErrorMessage.collectAsState()
     val goal by viewModel.goal.collectAsState()
     val goalProgress by viewModel.goalProgress.collectAsState() // If you want to keep using this, fine!
 
@@ -127,8 +137,9 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
         modifier =
             Modifier
                 .fillMaxSize()
-                .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(16.dp, 8.dp, 16.dp, 0.dp)
+                .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         // --- Date Picker ---
         OutlinedButton(
@@ -231,120 +242,183 @@ fun DailyEntryScreen(viewModel: WeightViewModel) {
             }
         }
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        HorizontalDivider()
 
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
-                    .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text("Metrics", style = MaterialTheme.typography.headlineSmall)
+        Text("Metrics", style = MaterialTheme.typography.headlineSmall)
 
-            avgWeight?.let {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(4.dp),
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("7-Day Rolling Average Weight", style = MaterialTheme.typography.labelLarge)
-                        Text(text = numberFormat.format(it), style = MaterialTheme.typography.headlineMedium)
-                    }
-                }
-            }
-
-            maintenance?.let {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(4.dp),
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Estimated Maintenance Calories", style = MaterialTheme.typography.labelLarge)
-                        Text(text = "$it kcal", style = MaterialTheme.typography.headlineMedium)
-                        Text(
-                            text = "Based on $maintenanceEntryCount entries in the last 14 days",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-            }
-
-            projection.targetCalories?.let {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(4.dp),
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Target Intake for Goal", style = MaterialTheme.typography.labelLarge)
-                        Text(text = "$it kcal/day", style = MaterialTheme.typography.headlineMedium)
-                    }
-                }
-            }
-
-            projection.goalDate?.let {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(4.dp),
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Row {
-                            Text("Goal Date: ", style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                text = sdf.format(it),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-                }
-            }
-
-            projection.finalWeight?.let { weight ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(4.dp),
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(
-                            text = String.format(Locale.UK, "Estimated Final Weight: %.1f kg", weight),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                }
-            }
-
-            projection.weightChange?.let { change ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(4.dp),
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(
-                            text = String.format(Locale.UK, "Estimated Weight Change: %.1f kg", change),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                }
-            }
-
-            // Optional: Show required daily change for bulk/cut/target
-            if (goal?.type == GoalType.CUT || goal?.type == GoalType.BULK || goal?.type == GoalType.TARGET_WEIGHT) {
-                projection.dailyCalories?.let {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        elevation = CardDefaults.cardElevation(4.dp),
-                    ) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text(
-                                "Required Daily Calorie Change: $it kcal/day",
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        }
-                    }
+        avgWeight?.let {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(4.dp),
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("7-Day Rolling Average Weight", style = MaterialTheme.typography.titleMedium)
+                    Text(text = numberFormat.format(it), style = MaterialTheme.typography.bodyLarge)
                 }
             }
         }
+
+        if (maintenance != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(4.dp),
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Estimated Maintenance Calories", style = MaterialTheme.typography.titleMedium)
+                    Text(text = "$maintenance kcal", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = "Based on $maintenanceEntryCount entries in the last 14 days",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+        } else if (maintenanceEstimateErrorMessage != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Estimated Maintenance Calories", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = "$maintenanceEstimateErrorMessage",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        text = "Based on $maintenanceEntryCount entries in the last 14 days",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(4.dp),
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Goal Details", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                goal?.let {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(
+                            text = "Current Goal:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.alignByBaseline(),
+                        )
+                        Text(
+                            text =
+                                it.type.name
+                                    .lowercase()
+                                    .replaceFirstChar { c -> c.uppercase() },
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.alignByBaseline(),
+                        )
+                    }
+                    projection.targetCalories?.let { targetCalories ->
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "Target Intake:",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.alignByBaseline(),
+                            )
+                            Text(
+                                "$targetCalories kcal/day",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.alignByBaseline(),
+                            )
+                        }
+                    }
+                    projection.dailyCalories?.let { dailyCalories ->
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "Daily Calorie Change:",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.alignByBaseline(),
+                            )
+                            Text(
+                                "$dailyCalories kcal/day",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.alignByBaseline(),
+                            )
+                        }
+                    }
+                    projection.goalDate?.let { goalDate ->
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            val label =
+                                when (goal?.timeMode) {
+                                    GoalTimeMode.BY_DURATION, GoalTimeMode.BY_RATE -> "Goal Date:"
+                                    GoalTimeMode.BY_DATE -> "Target Goal Date:"
+                                    else -> "Goal Date:"
+                                }
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.alignByBaseline(),
+                            )
+                            Text(
+                                sdf.format(goalDate),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.alignByBaseline(),
+                            )
+                        }
+                    }
+                    projection.finalWeight?.let { finalWeight ->
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            val label =
+                                when (goal?.timeMode) {
+                                    GoalTimeMode.BY_DURATION -> "Estimated Final Weight:"
+                                    GoalTimeMode.BY_DATE, GoalTimeMode.BY_RATE -> "Target Weight:"
+                                    else -> "Final Weight:"
+                                }
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.alignByBaseline(),
+                            )
+                            Text(
+                                String.format(Locale.UK, "%.1f kg", finalWeight),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.alignByBaseline(),
+                            )
+                        }
+                    }
+                    projection.weightChange?.let { weightChange ->
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "Total Weight Change:",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.alignByBaseline(),
+                            )
+                            Text(
+                                String.format(Locale.UK, "%.1f kg", weightChange),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.alignByBaseline(),
+                            )
+                        }
+                    }
+                } ?: Text("No active goal set", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
     }
 }

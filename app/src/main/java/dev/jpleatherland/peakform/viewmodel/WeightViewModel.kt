@@ -100,6 +100,30 @@ class WeightViewModel(
                 if (estimate in 1000..6000) estimate else null // Clamp out crazy values
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    val maintenanceEstimateErrorMessage: StateFlow<String?> =
+        entries
+            .map { list ->
+                val now = System.currentTimeMillis()
+                val fourteenDaysAgo = now - TimeUnit.DAYS.toMillis(14)
+                val recent =
+                    list
+                        .filter { it.weight != null && it.calories != null && it.date >= fourteenDaysAgo }
+                        .sortedBy { it.date }
+
+                when {
+                    recent.size < 2 ->
+                        @Suppress("ktlint:standard:max-line-length")
+                        "To see your estimated maintenance calories log at least two days of weight and calories in the last 14 days."
+                    TimeUnit.MILLISECONDS.toDays(recent.last().date - recent.first().date) < 7 ->
+                        "To see your estimated maintenance calories your recent entries must cover at least 7 days for a maintenance estimate."
+                    else -> {
+                        // The estimate calculation returned null for some other reason
+                        // (e.g., estimate out of bounds).
+                        "Unable to calculate a reasonable maintenance value (check for very high/low calorie entries)."
+                    }
+                }
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     // === NEW: Centralized Projection State ===
     val goalProjection: StateFlow<GoalProjection?> =
         combine(

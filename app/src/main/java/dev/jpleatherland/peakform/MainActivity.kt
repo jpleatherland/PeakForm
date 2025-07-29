@@ -28,6 +28,7 @@ import dev.jpleatherland.peakform.data.provideDatabase
 import dev.jpleatherland.peakform.navigation.AppNavHost
 import dev.jpleatherland.peakform.navigation.Screen
 import dev.jpleatherland.peakform.ui.theme.PeakFormTheme
+import dev.jpleatherland.peakform.viewmodel.SettingsViewModel
 import dev.jpleatherland.peakform.viewmodel.WeightViewModel
 
 class MainActivity : ComponentActivity() {
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
         val healthConnectClient = HealthConnectClient.getOrCreate(this)
         val factory = WeightViewModelFactory(repo, goalRepo, goalSegmentRepo, healthConnectClient)
         val viewModel = ViewModelProvider(this, factory)[WeightViewModel::class.java]
+        val settingsViewModel = ViewModelProvider(this, factory)[SettingsViewModel::class.java]
 
         setContent {
             PeakFormTheme {
@@ -104,21 +106,6 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                             )
-                            NavigationBarItem(
-                                icon = {
-                                    Icon(
-                                        Icons.Default.Settings,
-                                        contentDescription = null,
-                                    )
-                                },
-                                label = { Text(Screen.Settings.title) },
-                                selected = navController.currentDestination?.route == Screen.Settings.route,
-                                onClick = {
-                                    navController.navigate(Screen.Settings.route) {
-                                        launchSingleTop = true
-                                    }
-                                },
-                            )
                             if (BuildConfig.DEBUG) {
                                 NavigationBarItem(
                                     icon = { Icon(Icons.Default.Warning, contentDescription = null) },
@@ -135,7 +122,7 @@ class MainActivity : ComponentActivity() {
                     },
                 ) { padding ->
                     Box(modifier = Modifier.padding(padding)) {
-                        AppNavHost(navController = navController, viewModel = viewModel)
+                        AppNavHost(navController = navController, viewModel = viewModel, settingsViewModel = settingsViewModel)
                     }
                 }
             }
@@ -147,6 +134,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MyTopBar(
     currentScreen: Screen,
+    showBackArrow: Boolean = false,
+    onNavigateBack: (() -> Unit)? = null,
     onSettingsClick: () -> Unit,
 ) {
     when (currentScreen) {
@@ -157,7 +146,7 @@ fun MyTopBar(
                     Image(
                         painter = painterResource(id = R.drawable.ic_launcher_removebg),
                         contentDescription = "PeakForm Logo",
-                        modifier = Modifier.size(60.dp), // Adjust size as needed
+                        modifier = Modifier.size(60.dp),
                     )
                 },
                 actions = {
@@ -193,20 +182,4 @@ fun MyTopBar(
             )
         }
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TrendsCollapsingAppBar(onSettingsClick: () -> Unit) {
-    LargeTopAppBar(
-        title = { Text(Screen.Charts.title) },
-        actions = { IconButton(onClick = onSettingsClick) { Icon(Icons.Default.Settings, contentDescription = "Settings") } },
-        colors =
-            TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                actionIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            ),
-    )
 }

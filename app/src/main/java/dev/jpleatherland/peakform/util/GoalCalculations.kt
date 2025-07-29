@@ -31,15 +31,14 @@ object GoalCalculations {
      * The one function to rule them all: returns everything you need for any screen.
      */
     fun project(
-        goal: Goal?, // nullable for "no goal" case
+        goal: Goal?,
         currentWeight: Double,
         avgMaintenance: Int?,
         rateInput: String,
         selectedPreset: RatePreset? = null,
-        durationWeeks: Int? = null,
-        targetDate: Date? = null,
+        durationWeeks: Int? = null, // this is user's input from UI
+        targetDate: Date? = null, // this is user's input from UI
     ): GoalProjection {
-        // If no goal is set, return a mostly-empty projection
         if (goal == null) {
             return GoalProjection(
                 rateKgPerWeek = 0.0,
@@ -52,12 +51,12 @@ object GoalCalculations {
             )
         }
 
-        // --- 1. Determine direction (sign) ---
+        // 1. Direction (sign)
         val rateSign =
             goal.goalWeight?.let { gw ->
                 when {
-                    gw < currentWeight -> -1.0 // Cutting
-                    gw > currentWeight -> 1.0 // Bulking
+                    gw < currentWeight -> -1.0
+                    gw > currentWeight -> 1.0
                     else -> 0.0
                 }
             } ?: when (goal.type) {
@@ -66,19 +65,17 @@ object GoalCalculations {
                 else -> 0.0
             }
 
-        // --- 2. Calculate raw rate (absolute value) ---
-
+        // 2. Raw rate
         val rateKgPerWeek: Double =
             when (goal.timeMode) {
                 GoalTimeMode.BY_DATE -> {
-                    // Calculate how many weeks to go
+                    // Calculate needed rate to hit target by target date
                     val date = targetDate ?: goal.targetDate?.let { Date(it) }
                     if (goal.goalWeight != null && date != null) {
                         val millisDiff = date.time - System.currentTimeMillis()
                         val weeks = millisDiff / (1000.0 * 60 * 60 * 24 * 7)
                         if (weeks > 0) {
                             val delta = goal.goalWeight - currentWeight
-                            // Negative for cut, positive for bulk (the sign is baked in delta)
                             delta / weeks
                         } else {
                             0.0
@@ -95,61 +92,66 @@ object GoalCalculations {
                             RateMode.PRESET -> (goal.ratePreset ?: selectedPreset ?: RatePreset.LEAN).percentPerWeek * currentWeight
                             else -> 0.0
                         }
-                    // Handle sign here if you want, e.g. for cut/bulk
                     rawRate * rateSign
                 }
             }
 
-        // --- 3. Calculate duration (weeks) ---
+        // 3. Duration (weeks)
         val weeks: Double? =
             when (goal.timeMode) {
-                GoalTimeMode.BY_RATE ->
+                GoalTimeMode.BY_RATE -> {
                     if (goal.goalWeight != null && abs(rateKgPerWeek) > 0.0) {
                         abs(goal.goalWeight - currentWeight) / abs(rateKgPerWeek)
                     } else {
                         null
                     }
-                GoalTimeMode.BY_DATE ->
-                    targetDate?.let {
+                }
+                GoalTimeMode.BY_DATE -> {
+                    val date = targetDate ?: goal.targetDate?.let { Date(it) }
+                    date?.let {
                         val millisDiff = it.time - System.currentTimeMillis()
-                        millisDiff / (1000.0 * 60 * 60 * 24 * 7)
+                        val w = millisDiff / (1000.0 * 60 * 60 * 24 * 7)
+                        if (w > 0) w else null
                     }
-                GoalTimeMode.BY_DURATION ->
-                    durationWeeks?.toDouble()
+                }
+                GoalTimeMode.BY_DURATION -> {
+                    val d = durationWeeks ?: goal.durationWeeks
+                    if (d != null && d > 0) d.toDouble() else null
+                }
             }
 
-        // --- 4. Calculate final/projected weight ---
+        // 4. Final/projected weight
         val finalWeight: Double? =
             when (goal.timeMode) {
-                GoalTimeMode.BY_DURATION ->
-                    durationWeeks?.let { currentWeight + (rateKgPerWeek * it) }
-                GoalTimeMode.BY_DATE, GoalTimeMode.BY_RATE ->
-                    goal.goalWeight
+                GoalTimeMode.BY_DURATION -> {
+                    val d = durationWeeks ?: goal.durationWeeks
+                    if (d != null && d > 0) currentWeight + (rateKgPerWeek * d) else null
+                }
+                GoalTimeMode.BY_DATE, GoalTimeMode.BY_RATE -> goal.goalWeight
             }
 
-        // --- 5. Calculate weight change (total) ---
+        // 5. Weight change (total)
         val weightChange: Double? = weeks?.let { rateKgPerWeek * it }
 
-        // --- 6. Estimate goal date ---
-        val goalDate =
+        // 6. Goal date
+        val goalDate: Date? =
             when (goal.timeMode) {
-                GoalTimeMode.BY_RATE ->
+                GoalTimeMode.BY_RATE -> {
                     if (goal.goalWeight != null && abs(rateKgPerWeek) > 0.0) {
-                        Date(
-                            System.currentTimeMillis() +
-                                ((abs(goal.goalWeight - currentWeight) / abs(rateKgPerWeek)) * 7 * 24 * 60 * 60 * 1000).toLong(),
-                        )
+                        val durationWeeks = abs(goal.goalWeight - currentWeight) / abs(rateKgPerWeek)
+                        Date(System.currentTimeMillis() + (durationWeeks * 7 * 24 * 60 * 60 * 1000).toLong())
                     } else {
                         null
                     }
-                GoalTimeMode.BY_DATE -> targetDate
-                GoalTimeMode.BY_DURATION ->
-                    durationWeeks?.let {
-                        Date(System.currentTimeMillis() + (it * 7 * 24 * 60 * 60 * 1000).toLong())
-                    }
+                }
+                GoalTimeMode.BY_DATE -> targetDate ?: goal.targetDate?.let { Date(it) }
+                GoalTimeMode.BY_DURATION -> {
+                    val d = durationWeeks ?: goal.durationWeeks
+                    if (d != null && d > 0) Date(System.currentTimeMillis() + (d * 7 * 24 * 60 * 60 * 1000L)) else null
+                }
             }
 
-        // --- 7. Calorie calculations ---
+        // 7. Calorie calculations
         val totalCalories = weightChange?.let { (it * 7700).toInt() }
         val days = weeks?.let { (it * 7).toInt() }
         val dailyCalories =

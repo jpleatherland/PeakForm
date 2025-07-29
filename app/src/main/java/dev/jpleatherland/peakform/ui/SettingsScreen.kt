@@ -3,6 +3,7 @@ package dev.jpleatherland.peakform.ui
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -64,13 +65,20 @@ fun SettingsScreen(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text("Weight unit:")
-            SegmentedButton(
-                options = listOf("kg", "lbs"),
-                selected = if (weightUnit == WeightUnit.KG) 0 else 1,
-                onSelected = {
-                    settingsViewModel.setWeightUnit(if (it == 0) WeightUnit.KG else WeightUnit.LB)
+            RadioButton(
+                selected = weightUnit == WeightUnit.KG,
+                onClick = {
+                    settingsViewModel.setWeightUnit(WeightUnit.KG)
                 },
             )
+            Text("kg", Modifier.clickable { settingsViewModel.setWeightUnit(WeightUnit.KG) })
+            RadioButton(
+                selected = weightUnit == WeightUnit.LB,
+                onClick = {
+                    settingsViewModel.setWeightUnit(WeightUnit.LB)
+                },
+            )
+            Text("lb", Modifier.clickable { settingsViewModel.setWeightUnit(WeightUnit.LB) })
         }
 
         // --- Health Connect Sync: READ ---

@@ -12,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId = "dev.jpleatherland.peakform"
-        minSdk = 28
+        minSdk = 30
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -75,6 +75,7 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.navigation)
+    implementation(libs.androidx.datastore)
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

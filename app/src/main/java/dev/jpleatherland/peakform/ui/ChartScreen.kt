@@ -135,7 +135,7 @@ fun WeightChart(
     val dateFormatter = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
 
     AndroidView(factory = { context ->
-        val markerView = ChartLabels(context, R.layout.marker_view)
+        val markerView = ChartLabels(context, R.layout.marker_view, R.string.marker_weight_date)
         LineChart(context).apply {
             val chartHeightDp = 300.dp
             val heightPx = with(density) { chartHeightDp.roundToPx() }
@@ -299,7 +299,7 @@ fun CaloriesChart(
     val dateFormatter = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
 
     AndroidView(factory = { context ->
-        val markerView = ChartLabels(context, R.layout.marker_view)
+        val markerView = ChartLabels(context, R.layout.marker_view, R.string.marker_calories_date)
         LineChart(context).apply {
             val chartHeightDp = 300.dp
             val heightPx = with(density) { chartHeightDp.roundToPx() }

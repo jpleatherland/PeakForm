@@ -11,6 +11,7 @@ import dev.jpleatherland.peakform.R
 class ChartLabels(
     context: Context,
     layoutResource: Int,
+    private val labelRes: Int,
 ) : MarkerView(context, layoutResource) {
     private val tvContent: TextView = findViewById(R.id.tvContent)
 
@@ -19,16 +20,25 @@ class ChartLabels(
         highlight: Highlight?,
     ) {
         if (e != null) {
-            // Assuming e.data holds your formatted date as a String
             var date = (e.data as? String) ?: ""
             date = date.split("|").getOrNull(1) ?: ""
-            val weight = e.y
-            tvContent.text =
-                context.getString(
-                    R.string.marker_weight_date,
-                    weight,
-                    date,
-                )
+            if (labelRes == R.string.marker_calories_date) {
+                val kcals = e.y.toInt()
+                tvContent.text =
+                    context.getString(
+                        labelRes,
+                        kcals,
+                        date,
+                    )
+            } else {
+                val weight = e.y
+                tvContent.text =
+                    context.getString(
+                        R.string.marker_weight_date,
+                        weight,
+                        date,
+                    )
+            }
         }
         super.refreshContent(e, highlight)
     }

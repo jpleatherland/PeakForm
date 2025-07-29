@@ -1,9 +1,18 @@
 import java.util.Properties
 
-val keystoreProperties =
+val keystoreFile = System.getenv("KEYSTORE_PATH")
+val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
+val keyAlias = System.getenv("KEY_ALIAS")
+val keyPassword = System.getenv("KEY_PASSWORD")
+
+val localKeystorePropertiesFile = File(rootDir, "keystore.properties")
+val localKeystoreProperties =
     Properties().apply {
-        load(File(rootDir, "keystore.properties").inputStream())
+        if (localKeystorePropertiesFile.exists()) {
+            load(localKeystorePropertiesFile.inputStream())
+        }
     }
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -57,10 +66,10 @@ android {
             keyPassword = "android"
         }
         create("release") {
-            storeFile = file(keystoreProperties["storeFile"] as String)
-            storePassword = keystoreProperties["storePassword"] as String
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["keyPassword"] as String
+            storeFile = file(keystoreFile ?: localKeystoreProperties["storeFile"] as String)
+            storePassword = keystorePassword ?: localKeystoreProperties["storePassword"] as String
+            keyAlias = keyAlias ?: localKeystoreProperties["keyAlias"] as String
+            keyPassword = keyPassword ?: localKeystoreProperties["keyPassword"] as String
         }
     }
 

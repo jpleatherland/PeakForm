@@ -59,12 +59,12 @@ android {
         disable += "NullSafeMutableLiveData"
     }
     signingConfigs {
-        create("debugRelease") {
-            storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
-        }
+//        create("debugRelease") {
+//            storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
+//            storePassword = "android"
+//            keyAlias = "androiddebugkey"
+//            keyPassword = "android"
+//        }
         create("release") {
             storeFile = file(keystoreFile ?: localKeystoreProperties["storeFile"] as String)
             storePassword = keystorePassword ?: localKeystoreProperties["storePassword"] as String
@@ -75,8 +75,11 @@ android {
 
     buildTypes {
         getByName("release") {
-            signingConfig = signingConfigs.getByName("debugRelease")
+            signingConfig = signingConfigs.getByName("release")
         }
+//        getByName("debugRelease") {
+//            signingConfig = signingConfigs.getByName("debugRelease")
+//        }
     }
 }
 

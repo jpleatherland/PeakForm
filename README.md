@@ -74,7 +74,7 @@ Check out the [contributing guidelines](CONTRIBUTING.md) (coming soon) or open a
 
 - [ ] Month-by-month chart navigation
 - [ ] Theming & visual polish
-- [ ] Better localisation support. KG vs LBS, date formats etc.
+- [ ] Better localisation support
 
 ---
 

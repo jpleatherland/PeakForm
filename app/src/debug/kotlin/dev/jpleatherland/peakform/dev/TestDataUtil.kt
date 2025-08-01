@@ -39,68 +39,6 @@ fun generateTestData(
         val startDate = today.minusDays(29)
         val startDateMillis = startDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
-        val goal =
-            when (type) {
-                TestDataType.TRENDING_DOWN, TestDataType.CUT_WITH_JUMP ->
-                    Goal(
-                        goalWeight = 62.0,
-                        type = GoalType.CUT,
-                        timeMode = GoalTimeMode.BY_RATE,
-                        targetDate = null,
-                        ratePerWeek = 0.5,
-                        durationWeeks = null,
-                        rateMode = RateMode.KG_PER_WEEK,
-                        createdAt = startDateMillis,
-                    )
-                TestDataType.TRENDING_UP, TestDataType.BULK_WITH_JUMP ->
-                    Goal(
-                        goalWeight = 78.0,
-                        type = GoalType.BULK,
-                        timeMode = GoalTimeMode.BY_RATE,
-                        targetDate = null,
-                        ratePerWeek = 0.3,
-                        durationWeeks = null,
-                        rateMode = RateMode.KG_PER_WEEK,
-                        createdAt = startDateMillis,
-                    )
-                TestDataType.RANDOM ->
-                    Goal(
-                        goalWeight = 70.0,
-                        type = GoalType.TARGET_WEIGHT,
-                        timeMode = GoalTimeMode.BY_DATE,
-                        targetDate = System.currentTimeMillis() + 14 * 24 * 3600 * 1000,
-                        ratePerWeek = null,
-                        durationWeeks = null,
-                        rateMode = null,
-                        createdAt = startDateMillis,
-                    )
-                TestDataType.BULK_WITH_JUMP_BY_DATE ->
-                    Goal(
-                        goalWeight = 80.0,
-                        type = GoalType.BULK,
-                        timeMode = GoalTimeMode.BY_DATE,
-                        targetDate = startDate.plusDays(60).toEpochMillis(),
-                        ratePerWeek = null,
-                        durationWeeks = null,
-                        rateMode = null,
-                        createdAt = startDateMillis,
-                    )
-                TestDataType.CUT_WITH_JUMP_BY_DATE ->
-                    Goal(
-                        goalWeight = 62.0,
-                        type = GoalType.CUT,
-                        timeMode = GoalTimeMode.BY_DATE,
-                        targetDate = startDate.plusDays(60).toEpochMillis(),
-                        ratePerWeek = null,
-                        durationWeeks = null,
-                        rateMode = null,
-                        createdAt = startDateMillis,
-                    )
-            }
-        goalDao.insert(
-            goal,
-        )
-        val window = 14 // rolling window, like your app
         val desiredMaintenance =
             when (type) {
                 TestDataType.TRENDING_UP, TestDataType.BULK_WITH_JUMP, TestDataType.BULK_WITH_JUMP_BY_DATE -> 2500
@@ -132,6 +70,83 @@ fun generateTestData(
                     TestDataType.RANDOM -> 70.0 // (just to avoid randomness here)
                 }
             }
+// Calculate base values from generated weights
+        val startWeight = weights.first()
+        val initialMaintenance = desiredMaintenance
+        val goalCreatedAt = startDateMillis
+
+        val goal =
+            when (type) {
+                TestDataType.TRENDING_DOWN, TestDataType.CUT_WITH_JUMP ->
+                    Goal(
+                        goalWeight = 62.0,
+                        type = GoalType.CUT,
+                        timeMode = GoalTimeMode.BY_RATE,
+                        targetDate = null,
+                        ratePerWeek = 0.5,
+                        durationWeeks = null,
+                        rateMode = RateMode.KG_PER_WEEK,
+                        createdAt = goalCreatedAt,
+                        startWeight = startWeight,
+                        initialMaintenanceCalories = initialMaintenance,
+                    )
+                TestDataType.TRENDING_UP, TestDataType.BULK_WITH_JUMP ->
+                    Goal(
+                        goalWeight = 78.0,
+                        type = GoalType.BULK,
+                        timeMode = GoalTimeMode.BY_RATE,
+                        targetDate = null,
+                        ratePerWeek = 0.3,
+                        durationWeeks = null,
+                        rateMode = RateMode.KG_PER_WEEK,
+                        createdAt = goalCreatedAt,
+                        startWeight = startWeight,
+                        initialMaintenanceCalories = initialMaintenance,
+                    )
+                TestDataType.RANDOM ->
+                    Goal(
+                        goalWeight = 70.0,
+                        type = GoalType.TARGET_WEIGHT,
+                        timeMode = GoalTimeMode.BY_DATE,
+                        targetDate = System.currentTimeMillis() + 14 * 24 * 3600 * 1000,
+                        ratePerWeek = null,
+                        durationWeeks = null,
+                        rateMode = null,
+                        createdAt = goalCreatedAt,
+                        startWeight = startWeight,
+                        initialMaintenanceCalories = initialMaintenance,
+                    )
+                TestDataType.BULK_WITH_JUMP_BY_DATE ->
+                    Goal(
+                        goalWeight = 80.0,
+                        type = GoalType.BULK,
+                        timeMode = GoalTimeMode.BY_DATE,
+                        targetDate = startDate.plusDays(60).toEpochMillis(),
+                        ratePerWeek = null,
+                        durationWeeks = null,
+                        rateMode = null,
+                        createdAt = goalCreatedAt,
+                        startWeight = startWeight,
+                        initialMaintenanceCalories = initialMaintenance,
+                    )
+                TestDataType.CUT_WITH_JUMP_BY_DATE ->
+                    Goal(
+                        goalWeight = 62.0,
+                        type = GoalType.CUT,
+                        timeMode = GoalTimeMode.BY_DATE,
+                        targetDate = startDate.plusDays(60).toEpochMillis(),
+                        ratePerWeek = null,
+                        durationWeeks = null,
+                        rateMode = null,
+                        createdAt = goalCreatedAt,
+                        startWeight = startWeight,
+                        initialMaintenanceCalories = initialMaintenance,
+                    )
+            }
+        goalDao.insert(
+            goal,
+        )
+        val window = 14 // rolling window, like your app
 
         val entries =
             (0 until 30).map { i ->

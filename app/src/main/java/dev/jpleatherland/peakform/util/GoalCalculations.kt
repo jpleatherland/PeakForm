@@ -24,6 +24,8 @@ data class GoalProjection(
     val totalCalories: Int?, // total kcals to lose/gain over period
     val dailyCalories: Int?, // required daily surplus/deficit for rate
     val targetCalories: Int?, // maintenance + dailyCalories
+    val startWeight: Double?, // initial weight at start of goal
+    val usedMaintenance: Int? = null, // initial maintenance calories used for calculations
 )
 
 object GoalCalculations {
@@ -38,6 +40,8 @@ object GoalCalculations {
         selectedPreset: RatePreset? = null,
         durationWeeks: Int? = null, // this is user's input from UI
         targetDate: Date? = null, // this is user's input from UI
+        startWeight: Double? = null, // initial weight at start of goal, if known
+        usedMaintenance: Int? = null, // initial maintenance calories used for calculations
     ): GoalProjection {
         if (goal == null) {
             return GoalProjection(
@@ -48,6 +52,8 @@ object GoalCalculations {
                 totalCalories = null,
                 dailyCalories = null,
                 targetCalories = null,
+                startWeight = startWeight ?: currentWeight,
+                usedMaintenance = usedMaintenance ?: avgMaintenance,
             )
         }
 
@@ -170,6 +176,8 @@ object GoalCalculations {
             totalCalories = totalCalories,
             dailyCalories = dailyCalories,
             targetCalories = targetCalories,
+            startWeight = startWeight ?: currentWeight,
+            usedMaintenance = usedMaintenance ?: avgMaintenance,
         )
     }
 
@@ -179,7 +187,7 @@ object GoalCalculations {
         estimatedMaintenance: Int?,
         goalSegmentRepository: GoalSegmentRepository,
     ): GoalSegment? {
-        val goalId = goal.id ?: return null
+        val goalId = goal.id
 
         // 1. Get last correction segment, if any
         val lastSegment =
@@ -262,16 +270,78 @@ object GoalCalculations {
             goalId = goalId,
             startDate = windowFirst.date,
             endDate = windowLast.date,
-            startWeight = windowFirst.weight ?: return null,
-            endWeight = windowLast.weight ?: return null,
+            startWeight = windowFirst.weight,
+            endWeight = windowLast.weight,
             targetCalories = targetCals,
             ratePerWeek = actualRatePerWeek,
         )
     }
-
-    // Helper for averageOrNull (null safe)
-    private fun List<Double>.averageOrNull(): Double? = if (isEmpty()) null else average()
-
-    // Extension for LocalDate to epoch millis
-    private fun LocalDate.toEpochMillis(): Long = this.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 }
+
+fun getSmartStartWeight(entries: List<WeightEntry>): Double? {
+    val weightEntries = entries.filter { it.weight != null }.sortedByDescending { it.date }
+
+    if (weightEntries.size >= 7) {
+        return weightEntries.take(7).mapNotNull { it.weight }.average()
+    }
+
+    if (weightEntries.isNotEmpty()) {
+        return weightEntries.mapNotNull { it.weight }.average()
+    }
+
+    return null
+}
+
+enum class GoalValidationIssue {
+    MISSING_START_WEIGHT,
+    MISSING_CALORIES,
+    TARGET_CALORIES_TOO_LOW,
+    TARGET_CALORIES_TOO_HIGH,
+}
+
+fun validateGoalProjection(
+    goal: Goal,
+    projection: GoalProjection,
+): List<GoalValidationIssue> {
+    val issues = mutableListOf<GoalValidationIssue>()
+
+    if (projection.startWeight == null) {
+        issues += GoalValidationIssue.MISSING_START_WEIGHT
+    }
+
+    if (projection.dailyCalories == null) {
+        issues += GoalValidationIssue.MISSING_CALORIES
+    }
+
+    when (goal.type) {
+        GoalType.CUT -> {
+            if (projection.targetCalories != null && projection.targetCalories < 1000) {
+                issues += GoalValidationIssue.TARGET_CALORIES_TOO_LOW
+            }
+        }
+        GoalType.BULK -> {
+            if (projection.dailyCalories != null && projection.dailyCalories > 2000) {
+                issues += GoalValidationIssue.TARGET_CALORIES_TOO_HIGH
+            }
+        }
+        GoalType.TARGET_WEIGHT -> {
+            if (projection.targetCalories != null && projection.targetCalories < 1000) {
+                issues += GoalValidationIssue.TARGET_CALORIES_TOO_LOW
+            }
+            if (projection.dailyCalories != null && projection.dailyCalories > 2000) {
+                issues += GoalValidationIssue.TARGET_CALORIES_TOO_HIGH
+            }
+        }
+        else -> Unit
+    }
+
+    return issues
+}
+
+fun GoalValidationIssue.label(): String =
+    when (this) {
+        GoalValidationIssue.MISSING_START_WEIGHT -> "No starting weight available."
+        GoalValidationIssue.MISSING_CALORIES -> "Cannot calculate calorie needs."
+        GoalValidationIssue.TARGET_CALORIES_TOO_LOW -> "Target calories are too low to be safe."
+        GoalValidationIssue.TARGET_CALORIES_TOO_HIGH -> "Target calories are too high to be realistic."
+    }

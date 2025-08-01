@@ -26,6 +26,8 @@ import dev.jpleatherland.peakform.data.WeightEntry
 import dev.jpleatherland.peakform.data.WeightRepository
 import dev.jpleatherland.peakform.util.GoalCalculations
 import dev.jpleatherland.peakform.util.GoalProjection
+import dev.jpleatherland.peakform.util.MaintenanceCalculator
+import dev.jpleatherland.peakform.util.MaintenanceEstimateResult
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -70,59 +72,21 @@ class WeightViewModel(
                     .takeIf { it.isNotEmpty() }
                     ?.average()
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    private val _maintenanceEntryCount = MutableStateFlow(0)
-    val maintenanceEntryCount: StateFlow<Int> = _maintenanceEntryCount
-    val estimatedMaintenanceCalories: StateFlow<Int?> =
+
+    private val maintenanceEstimateResult =
         entries
-            .map { list ->
-                val now = System.currentTimeMillis()
-                val fourteenDaysAgo = now - TimeUnit.DAYS.toMillis(14)
-                val recent =
-                    list
-                        .filter { it.weight != null && it.calories != null && it.date >= fourteenDaysAgo }
-                        .sortedBy { it.date }
-                if (recent.size < 2) return@map null
+            .distinctUntilChangedBy { list -> list.map { it.date to it.calories to it.weight } }
+            .map { MaintenanceCalculator.estimate(it) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MaintenanceEstimateResult(null, null, 0))
 
-                val first = recent.first()
-                val last = recent.last()
-
-                val daysBetween = TimeUnit.MILLISECONDS.toDays(last.date - first.date).toDouble()
-                if (daysBetween < 7) return@map null // Must cover at least a week
-
-                val weightDelta = (last.weight ?: return@map null) - (first.weight ?: return@map null)
-                val kcalDelta = (weightDelta * 7700) / daysBetween
-
-                val avgCalories = recent.mapNotNull { it.calories }.average()
-                val estimate = (avgCalories - kcalDelta).toInt()
-
-                _maintenanceEntryCount.value = recent.size
-
-                if (estimate in 1000..6000) estimate else null // Clamp out crazy values
-            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val estimatedMaintenanceCalories: StateFlow<Int?> =
+        maintenanceEstimateResult.map { it.estimatedCalories }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val maintenanceEstimateErrorMessage: StateFlow<String?> =
-        entries
-            .map { list ->
-                val now = System.currentTimeMillis()
-                val fourteenDaysAgo = now - TimeUnit.DAYS.toMillis(14)
-                val recent =
-                    list
-                        .filter { it.weight != null && it.calories != null && it.date >= fourteenDaysAgo }
-                        .sortedBy { it.date }
+        maintenanceEstimateResult.map { it.message }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-                when {
-                    recent.size < 2 ->
-                        @Suppress("ktlint:standard:max-line-length")
-                        "To see your estimated maintenance calories log at least two days of weight and calories in the last 14 days."
-                    TimeUnit.MILLISECONDS.toDays(recent.last().date - recent.first().date) < 7 ->
-                        "To see your estimated maintenance calories your recent entries must cover at least 7 days for a maintenance estimate."
-                    else -> {
-                        // The estimate calculation returned null for some other reason
-                        // (e.g., estimate out of bounds).
-                        "Unable to calculate a reasonable maintenance value (check for very high/low calorie entries)."
-                    }
-                }
-            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val maintenanceEntryCount: StateFlow<Int> =
+        maintenanceEstimateResult.map { it.entryCount }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     // === NEW: Centralized Projection State ===
     val goalProjection: StateFlow<GoalProjection?> =

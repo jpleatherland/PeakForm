@@ -7,6 +7,7 @@ import java.util.Date
 @Entity(tableName = "goal")
 data class Goal(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val startWeight: Double,
     val goalWeight: Double?, // nullable if duration based
     val type: GoalType, // TARGET_WEIGHT, CUSTOM
     val timeMode: GoalTimeMode, // BY_DATE, BY_RATE, BY_DURATION
@@ -17,6 +18,7 @@ data class Goal(
     val ratePercent: Double? = null, // if rateMode is BODYWEIGHT_PERCENT
     val ratePreset: RatePreset? = null, // if rateMode is PRESET
     val createdAt: Long = System.currentTimeMillis(),
+    val initialMaintenanceCalories: Int = 2000,
 )
 
 enum class GoalType {

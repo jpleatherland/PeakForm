@@ -9,7 +9,7 @@
 ## Features
 
 - 📈 **Weight & Calorie Logging**: Fast entry for daily bodyweight and calories eaten.
-- 🔥 **Dynamic Maintenance Calculator**: Get a personalized estimate of your maintenance calories based on your own logged data, not generic formulas.
+- 🔥 **Dynamic Maintenance Calculator**: Get a personalized estimate of your maintenance calories based on your own logged data, not generic formulas (although if you have no data and want to get going with your goal, there's a TDEE calculator too).
 - 🎯 **Goal Tracking**: Set custom goals—cut, bulk, or maintain—by date, rate, or target weight.
 - 🗓️ **Trends & Analytics**: Visualize progress with trend lines, goal lines, and month-by-month breakdowns (more charting options coming soon).
 - 🔁 **Health Connect Sync**: Import/export weight data with Health Connect.

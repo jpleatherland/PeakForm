@@ -2,9 +2,9 @@ name: Build APK
 
 on:
   push:
-    branches: [ main ]
-    paths:
-      - 'app/**'
+#    branches: [ main ]
+#    paths:
+#      - 'app/**'
     tags:
       - 'v*'
   workflow_dispatch:

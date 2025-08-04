@@ -5,6 +5,7 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.records.NutritionRecord
 import androidx.health.connect.client.records.WeightRecord
 import androidx.health.connect.client.records.metadata.Metadata
+import androidx.health.connect.client.records.metadata.Metadata.Companion.manualEntry
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.units.Energy
@@ -274,7 +275,8 @@ class WeightViewModel(
             try {
                 val weightAppOnlyEntries = entries.value.filter { it.weightSource == "user" && it.weight != null }
                 val caloriesAppOnlyEntries = entries.value.filter { it.caloriesSource == "user" && it.calories != null }
-                val records = mutableListOf<androidx.health.connect.client.records.Record>()
+                val weightRecords = mutableListOf<WeightRecord>()
+                val nutritionRecords = mutableListOf<NutritionRecord>()
                 for (entry in weightAppOnlyEntries) {
                     // -- WeightRecord --
                     entry.weight?.let { weight ->
@@ -285,9 +287,12 @@ class WeightViewModel(
                                 weight = Mass.kilograms(weight),
                                 time = instant,
                                 zoneOffset = zoneOffset,
-                                metadata = Metadata.manualEntry(),
+                                metadata =
+                                    Metadata.manualEntry(
+                                        clientRecordId = entry.id.toString() + "weight",
+                                    ),
                             )
-                        records.add(record)
+                        weightRecords.add(record)
                     }
                 }
                 for (entry in caloriesAppOnlyEntries) {
@@ -311,15 +316,34 @@ class WeightViewModel(
                                 endTime = endOfDay,
                                 endZoneOffset = zoneOffset,
                                 energy = Energy.kilocalories(calories.toDouble()),
-                                metadata = Metadata.manualEntry(),
+                                metadata =
+                                    Metadata.manualEntry(
+                                        clientRecordId = entry.id.toString() + "nutrition",
+                                    ),
                             )
-                        records.add(record)
+                        nutritionRecords.add(record)
                     }
                 }
-                if (records.isNotEmpty()) {
-                    healthConnectClient.insertRecords(
-                        records,
-                    )
+                if (weightRecords.isNotEmpty()) {
+                    val weightEntryIds = healthConnectClient.insertRecords(weightRecords)
+                    weightRecords.zip(weightEntryIds.recordIdsList).forEach { (record, id) ->
+                        val entry = weightAppOnlyEntries.find { it.date == record.time.toEpochMilli() }
+                        if (entry != null) {
+                            entry.weightHealthConnectId = id
+                            updateEntry(entry)
+                        }
+                    }
+                }
+
+                if (nutritionRecords.isNotEmpty()) {
+                    val nutritionEntryIds = healthConnectClient.insertRecords(nutritionRecords)
+                    nutritionRecords.zip(nutritionEntryIds.recordIdsList).forEach { (record, id) ->
+                        val entry = caloriesAppOnlyEntries.find { it.date == record.startTime.toEpochMilli() }
+                        if (entry != null) {
+                            entry.caloriesHealthConnectId = id
+                            updateEntry(entry)
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("WeightViewModel", "Error syncing with Health Connect", e)

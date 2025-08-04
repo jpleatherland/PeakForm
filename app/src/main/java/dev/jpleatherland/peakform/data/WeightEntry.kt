@@ -12,6 +12,8 @@ data class WeightEntry(
     val date: Long,
     val weight: Double? = null,
     val weightSource: String? = null,
+    var weightHealthConnectId: String? = null,
     val calories: Int? = null,
     val caloriesSource: String? = null,
+    var caloriesHealthConnectId: String? = null,
 )

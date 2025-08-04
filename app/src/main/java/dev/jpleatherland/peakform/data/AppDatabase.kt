@@ -3,7 +3,7 @@ package dev.jpleatherland.peakform.data
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
-@Database(entities = [WeightEntry::class, Goal::class, GoalSegment::class], version = 11)
+@Database(entities = [WeightEntry::class, Goal::class, GoalSegment::class], version = 12)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun weightDao(): WeightDao
 

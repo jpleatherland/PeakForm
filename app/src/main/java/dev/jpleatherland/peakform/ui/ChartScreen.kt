@@ -32,6 +32,7 @@ import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
 import dev.jpleatherland.peakform.R
 import dev.jpleatherland.peakform.data.Goal
 import dev.jpleatherland.peakform.data.GoalSegment
+import dev.jpleatherland.peakform.data.GoalType
 import dev.jpleatherland.peakform.data.WeightEntry
 import dev.jpleatherland.peakform.util.GoalProjection
 import dev.jpleatherland.peakform.util.WeightUnitValueFormatter
@@ -143,166 +144,191 @@ fun WeightChart(
     val density = LocalDensity.current
     val dateFormatter = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
 
-    AndroidView(factory = { context ->
-        val markerView = ChartLabels(context, R.layout.marker_view, R.string.marker_weight_date, weightUnit)
-        LineChart(context).apply {
-            val chartHeightDp = 300.dp
-            val heightPx = with(density) { chartHeightDp.roundToPx() }
-            layoutParams =
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    heightPx,
-                )
-            setTouchEnabled(true)
-            description.isEnabled = false
-            axisRight.isEnabled = false
-            xAxis.position = XAxis.XAxisPosition.BOTTOM
-            xAxis.granularity = 1f
-            xAxis.valueFormatter =
-                object : ValueFormatter() {
-                    private val sdf = SimpleDateFormat("dd/MM", Locale.getDefault())
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            val markerView = ChartLabels(context, R.layout.marker_view, R.string.marker_weight_date, weightUnit)
+            LineChart(context).apply {
+                val chartHeightDp = 300.dp
+                val heightPx = with(density) { chartHeightDp.roundToPx() }
+                layoutParams =
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        heightPx,
+                    )
+                setTouchEnabled(true)
+                description.isEnabled = false
+                axisRight.isEnabled = false
+                xAxis.position = XAxis.XAxisPosition.BOTTOM
+                xAxis.granularity = 1f
+                xAxis.valueFormatter =
+                    object : ValueFormatter() {
+                        private val sdf = SimpleDateFormat("dd/MM", Locale.getDefault())
 
-                    override fun getFormattedValue(value: Float): String = sdf.format(Date(TimeUnit.DAYS.toMillis(value.toLong())))
-                }
-            axisLeft.valueFormatter = WeightUnitValueFormatter(weightUnit)
-            axisRight.valueFormatter = WeightUnitValueFormatter(weightUnit)
-            marker = markerView
-        }
-    }, update = { chart ->
-
-        // --- ACTUAL WEIGHT ENTRIES ---
-        val dataPoints =
-            entries
-                .filter { it.weight != null }
-                .sortedBy { it.date }
-                .map {
-                    val x = TimeUnit.MILLISECONDS.toDays(it.date).toFloat()
-                    val y =
-                        when (weightUnit) {
-                            WeightUnit.KG -> it.weight!!.toFloat()
-                            WeightUnit.LB -> it.weight!!.kgToLb().toFloat()
-                        }
-                    val dateString = dateFormatter.format(Date(it.date))
-                    Entry(x, y).apply {
-                        data = "type:weight|$dateString"
+                        override fun getFormattedValue(value: Float): String = sdf.format(Date(TimeUnit.DAYS.toMillis(value.toLong())))
                     }
-                }
-
-        val lineDataSet =
-            LineDataSet(
-                dataPoints,
-                when (weightUnit) {
-                    WeightUnit.KG -> "Weight (kg)"
-                    WeightUnit.LB -> "Weight (lb)"
-                },
-            ).apply {
-                color = Color.BLUE
-                valueTextColor = Color.DKGRAY
-                setDrawCircles(true)
-                setDrawValues(false)
+                axisLeft.valueFormatter = WeightUnitValueFormatter(weightUnit)
+                axisRight.valueFormatter = WeightUnitValueFormatter(weightUnit)
+                marker = markerView
             }
+        },
+        update = { chart ->
 
-        // Trend line calculation (linear regression through actual data)
-        val trendPoints =
-            calculateTrendLine(dataPoints)
-
-        val trendDataSet =
-            LineDataSet(trendPoints, "Actual Trend").apply {
-                color = Color.GRAY
-                lineWidth = 2f
-                setDrawCircles(false)
-                setDrawValues(false)
-                enableDashedLine(10f, 5f, 0f)
-                setDrawHighlightIndicators(false)
-            }
-
-        // --- GOAL PROJECTION/SEGMENTED TREND LINE ---
-        val goalProjectionPoints =
-            if (goal != null && projection != null) {
-                buildGoalProjectionEntries(goal, segments, entries, projection)
-                    .map { entry ->
-                        Entry(
-                            entry.x,
+            // --- ACTUAL WEIGHT ENTRIES ---
+            val dataPoints =
+                entries
+                    .filter { it.weight != null }
+                    .sortedBy { it.date }
+                    .map {
+                        val x = TimeUnit.MILLISECONDS.toDays(it.date).toFloat()
+                        val y =
                             when (weightUnit) {
-                                WeightUnit.KG -> entry.y
-                                WeightUnit.LB -> entry.y * 2.20462f
-                            },
-                        )
+                                WeightUnit.KG -> it.weight!!.toFloat()
+                                WeightUnit.LB -> it.weight!!.kgToLb().toFloat()
+                            }
+                        val dateString = dateFormatter.format(Date(it.date))
+                        Entry(x, y).apply { data = "type:weight|$dateString" }
                     }
+
+            val lineDataSet =
+                LineDataSet(
+                    dataPoints,
+                    when (weightUnit) {
+                        WeightUnit.KG -> "Weight (kg)"
+                        WeightUnit.LB -> "Weight (lb)"
+                    },
+                ).apply {
+                    color = Color.BLUE
+                    valueTextColor = Color.DKGRAY
+                    setDrawCircles(true)
+                    setDrawValues(false)
+                }
+
+            // --- ACTUAL TREND LINE (linear regression) ---
+            val trendPoints = calculateTrendLine(dataPoints)
+            val trendDataSet =
+                LineDataSet(trendPoints, "Actual Trend").apply {
+                    color = Color.GRAY
+                    lineWidth = 2f
+                    setDrawCircles(false)
+                    setDrawValues(false)
+                    enableDashedLine(10f, 5f, 0f)
+                    setDrawHighlightIndicators(false)
+                }
+
+            // --- PROJECTION / MAINTAIN HANDLING ---
+            // Start X = latest logged day; Start Y = latest logged weight (in KG for calc, then converted for display)
+            val lastLoggedEntry = entries.filter { it.weight != null }.maxByOrNull { it.date }
+            val lastLoggedDateMillis = lastLoggedEntry?.date
+            val startWeightKg = lastLoggedEntry?.weight
+
+            // 1) If MAINTAIN: use LimitLine at steady weight; NO projection dataset
+            chart.axisLeft.removeAllLimitLines()
+            var projectionDataSet: LineDataSet? = null
+
+            if (goal?.type == GoalType.MAINTAIN) {
+                val yKg = projection?.finalWeight ?: startWeightKg
+                if (yKg != null) {
+                    val yDisplay =
+                        if (weightUnit == WeightUnit.KG) yKg.toFloat() else yKg.kgToLb().toFloat()
+                    val ll =
+                        com.github.mikephil.charting.components.LimitLine(yDisplay, "Maintain").apply {
+                            enableDashedLine(10f, 10f, 0f)
+                            lineWidth = 1.5f
+                            textSize = 10f
+                        }
+                    chart.axisLeft.addLimitLine(ll)
+                }
             } else {
-                emptyList()
-            }
-        val projectionDataSet =
-            LineDataSet(
-                goalProjectionPoints,
-                when (weightUnit) {
-                    WeightUnit.KG -> "Goal Projection (kg)"
-                    WeightUnit.LB -> "Goal Projection (lb)"
-                },
-            ).apply {
-                color = Color.GREEN
-                lineWidth = 2f
-                setDrawCircles(false)
-                setDrawValues(false)
-                enableDashedLine(10f, 5f, 0f)
-                setDrawHighlightIndicators(false)
+                // 2) Non-maintain: draw signed projection line until goalDate (if present)
+                if (projection != null && lastLoggedDateMillis != null && startWeightKg != null) {
+                    val signedProjEntriesKg =
+                        buildSignedProjectionEntries(
+                            lastLoggedDateMillis = lastLoggedDateMillis,
+                            startWeightKg = startWeightKg,
+                            projection = projection,
+                        )
+
+                    val signedProjEntriesDisplay =
+                        signedProjEntriesKg.map { e ->
+                            val yDisplay =
+                                if (weightUnit == WeightUnit.KG) {
+                                    e.y
+                                } else {
+                                    e.y * 2.20462f
+                                }
+                            Entry(e.x, yDisplay)
+                        }
+
+                    if (signedProjEntriesDisplay.size >= 2) {
+                        projectionDataSet =
+                            LineDataSet(
+                                signedProjEntriesDisplay,
+                                when (weightUnit) {
+                                    WeightUnit.KG -> "Goal Projection (kg)"
+                                    WeightUnit.LB -> "Goal Projection (lb)"
+                                },
+                            ).apply {
+                                color = Color.GREEN
+                                lineWidth = 2f
+                                setDrawCircles(false)
+                                setDrawValues(false)
+                                enableDashedLine(10f, 5f, 0f)
+                                setDrawHighlightIndicators(false)
+                            }
+                    }
+                }
             }
 
-        val dataSets = mutableListOf<ILineDataSet>(lineDataSet, projectionDataSet, trendDataSet)
-        chart.data = LineData(dataSets)
-        chart.invalidate()
-    })
+            // --- Assemble datasets ---
+            val dataSets = mutableListOf<ILineDataSet>(lineDataSet, trendDataSet)
+            projectionDataSet?.let { dataSets += it }
+            chart.data = LineData(dataSets)
+            chart.invalidate()
+        },
+    )
 }
 
-fun buildGoalProjectionEntries(
-    goal: Goal,
-    segments: List<GoalSegment>,
-    entries: List<WeightEntry>,
-    projection: GoalProjection?,
+/**
+ * Build a signed projection from the last logged point to the goal date.
+ * - Uses projection.rateKgPerWeek **with sign** (negative for cuts).
+ * - X axis uses "days since epoch" (to match your charts).
+ * - Returns KG-space entries (caller converts to display units).
+ */
+fun buildSignedProjectionEntries(
+    lastLoggedDateMillis: Long,
+    startWeightKg: Double,
+    projection: GoalProjection,
 ): List<Entry> {
-    if (projection == null) return emptyList()
+    val endDateMillis = projection.goalDate?.time ?: return emptyList()
+    if (endDateMillis <= lastLoggedDateMillis) return emptyList()
 
-    val firstWeightEntry = entries.firstOrNull { it.weight != null }
-    val startWeight = firstWeightEntry?.weight ?: return emptyList()
-    val startDate = goal.createdAt
+    val stepDays = 1L
+    val startX = TimeUnit.MILLISECONDS.toDays(lastLoggedDateMillis).toFloat()
+    val endX = TimeUnit.MILLISECONDS.toDays(endDateMillis).toFloat()
 
-    val allSegments = segments.sortedBy { it.startDate }
-    val entriesList = mutableListOf<Entry>()
+    val ratePerWeekKg = projection.rateKgPerWeek // IMPORTANT: keep SIGN
+    val points = ArrayList<Entry>()
 
-    fun toChartX(millis: Long) = TimeUnit.MILLISECONDS.toDays(millis).toFloat()
-
-    entriesList.add(Entry(toChartX(startDate), startWeight.toFloat()))
-
-    if (allSegments.isEmpty()) {
-        val endDate = projection.goalDate?.time ?: goal.targetDate ?: (startDate + TimeUnit.DAYS.toMillis(90))
-        val endWeight = projection.finalWeight ?: goal.goalWeight ?: startWeight
-        entriesList.add(Entry(toChartX(endDate), endWeight.toFloat()))
-        return entriesList
+    var tMillis = lastLoggedDateMillis
+    var idx = 0
+    while (tMillis <= endDateMillis) {
+        val days = TimeUnit.MILLISECONDS.toDays(tMillis - lastLoggedDateMillis).toDouble()
+        val yKg = startWeightKg + (ratePerWeekKg * (days / 7.0))
+        val x = TimeUnit.MILLISECONDS.toDays(tMillis).toFloat()
+        points += Entry(x, yKg.toFloat())
+        idx++
+        tMillis = lastLoggedDateMillis + TimeUnit.DAYS.toMillis(stepDays * idx)
     }
 
-    var prevDate = startDate
-    var prevWeight = startWeight
-
-    for (segment in allSegments) {
-        // To segment start
-        if (segment.startDate > prevDate) {
-            entriesList.add(Entry(toChartX(segment.startDate), segment.startWeight.toFloat()))
-        }
-        // To segment end
-        entriesList.add(Entry(toChartX(segment.endDate), segment.endWeight.toFloat()))
-        prevDate = segment.endDate
-        prevWeight = segment.endWeight
+    // ensure we hit the exact end X (floating date pickers can drift a day)
+    if (points.isNotEmpty() && points.last().x < endX) {
+        val totalDays = TimeUnit.MILLISECONDS.toDays(endDateMillis - lastLoggedDateMillis).toDouble()
+        val yKgEnd = startWeightKg + (ratePerWeekKg * (totalDays / 7.0))
+        points += Entry(endX, yKgEnd.toFloat())
     }
 
-    val finalTargetDate =
-        projection.goalDate?.time ?: goal.targetDate ?: (prevDate + TimeUnit.DAYS.toMillis(90))
-    val finalTargetWeight = projection.finalWeight ?: goal.goalWeight ?: prevWeight
-
-    if (finalTargetDate > prevDate) {
-        entriesList.add(Entry(toChartX(finalTargetDate), finalTargetWeight.toFloat()))
-    }
-
-    return entriesList
+    return points
 }
 
 // Helper for linear regression
@@ -315,7 +341,10 @@ private fun calculateTrendLine(entries: List<Entry>): List<Entry> {
     val sumXY = entries.sumOf { (it.x * it.y).toDouble() }
     val sumX2 = entries.sumOf { (it.x * it.x).toDouble() }
 
-    val b = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
+    val denom = (n * sumX2 - sumX * sumX)
+    if (denom == 0.0) return entries
+
+    val b = (n * sumXY - sumX * sumY) / denom
     val a = (sumY - b * sumX) / n
 
     return entries.map { entry ->
@@ -368,20 +397,17 @@ fun CaloriesChart(
                     val x = TimeUnit.MILLISECONDS.toDays(it.date).toFloat()
                     val y = it.calories!!.toFloat()
                     val dateString = dateFormatter.format(Date(it.date))
-                    Entry(x, y).apply {
-                        data = "type:calories|$dateString"
-                    }
+                    Entry(x, y).apply { data = "type:calories|$dateString" }
                 }
 
         // 2. Trend line
         val trendPoints = calculateTrendLine(dataPoints)
 
-        // 3. Stepped goal line (green, dashed)
-        val goalCalories =
-            projection?.targetCalories
+        // Clean any previous limit lines
+        chart.axisLeft.removeAllLimitLines()
 
-        val segCals = segments.map { it.targetCalories }
-        Log.d("CaloriesChart", "segCals: $segCals")
+        // 3. Stepped goal line (green, dashed)
+        val goalCalories = projection?.targetCalories
         val goalCaloriesEntries =
             buildGoalCaloriesEntries(
                 goal = goal,
@@ -389,6 +415,7 @@ fun CaloriesChart(
                 entries = entries,
                 fallbackGoalCalories = goalCalories,
             )
+
         val goalDataSet =
             if (goalCaloriesEntries.size > 1) {
                 LineDataSet(goalCaloriesEntries, "Goal Calories").apply {
@@ -403,6 +430,17 @@ fun CaloriesChart(
             } else {
                 null
             }
+
+        // ---- MAINTAIN: always add a horizontal LimitLine if we know the target
+        if (goal?.type == GoalType.MAINTAIN && goalCalories != null) {
+            val ll =
+                com.github.mikephil.charting.components.LimitLine(goalCalories.toFloat(), "Maintain").apply {
+                    enableDashedLine(10f, 10f, 0f)
+                    lineWidth = 1.5f
+                    textSize = 10f
+                }
+            chart.axisLeft.addLimitLine(ll)
+        }
 
         // 4. Entries line (red)
         val lineDataSet =
@@ -440,50 +478,64 @@ fun buildGoalCaloriesEntries(
     fallbackGoalCalories: Int? = null,
 ): List<Entry> {
     if (entries.isEmpty() && fallbackGoalCalories == null) return emptyList()
-    val toChartX = { millis: Long -> TimeUnit.MILLISECONDS.toDays(millis).toFloat() }
 
-    val chartStartX = goal?.createdAt
-    val chartEndX = entries.maxByOrNull { it.date }?.let { toChartX(it.date) }
-    val out = mutableListOf<Entry>()
+    fun toChartX(millis: Long) = TimeUnit.MILLISECONDS.toDays(millis).toFloat()
+
     val segs = segments.sortedBy { it.startDate }
+    val firstEntryMillis = entries.minByOrNull { it.date }?.date
+    val lastEntryMillis = entries.maxByOrNull { it.date }?.date
+    if (lastEntryMillis == null) return emptyList()
 
-    // No segments: fallback flat line
+    // We’ll draw across the visible X-range of your chart (from first to last entry),
+    // falling back to goal.createdAt as a start bound if earlier.
+    val startMillis =
+        minOf(
+            firstEntryMillis ?: lastEntryMillis,
+            goal?.createdAt ?: lastEntryMillis,
+        )
+    val endMillis = lastEntryMillis
+
+    val out = mutableListOf<Entry>()
+
+    // No segments: fallback flat line between start and end
     if (segs.isEmpty()) {
-        if (fallbackGoalCalories != null && chartStartX != null && chartEndX != null) {
-            out.add(Entry(toChartX(chartStartX), fallbackGoalCalories.toFloat()))
-            out.add(Entry(chartEndX, fallbackGoalCalories.toFloat()))
-        }
+        val y = (fallbackGoalCalories ?: return emptyList()).toFloat()
+        out += Entry(toChartX(startMillis), y)
+        out += Entry(toChartX(endMillis), y)
         return out
     }
 
+    // With segments: draw a stepped line that covers the chart’s visible range
+    // 1) Pre-first segment flat (if the chart starts earlier)
     val firstSeg = segs.first()
-    val lastSeg = segs.last()
-
-    // Before first segment: fallback
-    if (chartStartX != null && chartStartX < toChartX(firstSeg.startDate)) {
-        val preSegCal = fallbackGoalCalories?.toFloat() ?: firstSeg.targetCalories.toFloat()
-        out.add(Entry(toChartX(chartStartX), preSegCal))
-        out.add(Entry(toChartX(firstSeg.startDate), preSegCal))
+    if (startMillis < firstSeg.startDate) {
+        val y = (fallbackGoalCalories ?: firstSeg.targetCalories).toFloat()
+        out += Entry(toChartX(startMillis), y)
+        out += Entry(toChartX(firstSeg.startDate), y)
     }
 
-    // Each segment: stepped
-    for ((index, seg) in segs.withIndex()) {
-        val segStartX = toChartX(seg.startDate)
-        val segEndX =
-            if (index < segs.size - 1) {
-                toChartX(segs[index + 1].startDate)
+    // 2) Each segment level from its start to either next segment start or chart end
+    for ((i, seg) in segs.withIndex()) {
+        val segStart = maxOf(seg.startDate, startMillis)
+        val segEnd =
+            if (i < segs.lastIndex) {
+                minOf(segs[i + 1].startDate, endMillis)
             } else {
-                toChartX(seg.endDate)
+                minOf(seg.endDate, endMillis)
             }
-        out.add(Entry(segStartX, seg.targetCalories.toFloat()))
-        out.add(Entry(segEndX, seg.targetCalories.toFloat()))
+        if (segStart < segEnd) {
+            val y = seg.targetCalories.toFloat()
+            out += Entry(toChartX(segStart), y)
+            out += Entry(toChartX(segEnd), y)
+        }
     }
 
-    // After last segment: fallback
-    if (chartEndX != null && chartEndX > toChartX(lastSeg.endDate)) {
-        val postSegCal = fallbackGoalCalories?.toFloat() ?: lastSeg.targetCalories.toFloat()
-        out.add(Entry(toChartX(lastSeg.endDate), postSegCal))
-        out.add(Entry(chartEndX, postSegCal))
+    // 3) Post-last segment flat (if the chart extends beyond)
+    val lastSeg = segs.last()
+    if (endMillis > lastSeg.endDate) {
+        val y = (fallbackGoalCalories ?: lastSeg.targetCalories).toFloat()
+        out += Entry(toChartX(lastSeg.endDate), y)
+        out += Entry(toChartX(endMillis), y)
     }
 
     return out
@@ -496,14 +548,16 @@ fun ChartScreen(
 ) {
     val entries by viewModel.entries.collectAsState()
     val goal by viewModel.goal.collectAsState()
-
     val segments by viewModel.goalSegments.collectAsState()
     val goalProjection by viewModel.goalProjection.collectAsState()
-
     val weightUnit by settingsViewModel.weightUnit.collectAsState()
 
-    Log.d("ChartScreen", "Segments count: ${segments.size}")
     val entriesAsc = entries.sortedBy { it.date }
-
-    ChartLayout(entries = entriesAsc, goal = goal, segments = segments, weightUnit = weightUnit, projection = goalProjection)
+    ChartLayout(
+        entries = entriesAsc,
+        goal = goal,
+        segments = segments,
+        weightUnit = weightUnit,
+        projection = goalProjection,
+    )
 }

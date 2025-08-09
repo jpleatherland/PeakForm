@@ -148,16 +148,16 @@ fun GoalScreen(
     // ========== INPUT LOGIC ==========
 
     // 1. Should the target weight field be shown?
-    val needsGoalWeight = timeMode != GoalTimeMode.BY_DURATION
+    val needsGoalWeight = timeMode != GoalTimeMode.BY_DURATION && goalType != GoalType.MAINTAIN
 
     // 2. Should the duration field be shown?
-    val needsDuration = timeMode == GoalTimeMode.BY_DURATION
+    val needsDuration = timeMode == GoalTimeMode.BY_DURATION && goalType != GoalType.MAINTAIN
 
     // 3. Should the rate input (or picker) be shown?
-    val needsRateInput = timeMode == GoalTimeMode.BY_RATE || timeMode == GoalTimeMode.BY_DURATION
+    val needsRateInput = (timeMode == GoalTimeMode.BY_RATE || timeMode == GoalTimeMode.BY_DURATION) && goalType != GoalType.MAINTAIN
 
     // 4. Should the date picker be shown?
-    val needsDate = timeMode == GoalTimeMode.BY_DATE
+    val needsDate = timeMode == GoalTimeMode.BY_DATE && goalType != GoalType.MAINTAIN
 
     // ========== LIVE PROJECTION (using all UI state) ==========
 
@@ -179,8 +179,38 @@ fun GoalScreen(
             }
         }
 
+    val canProject =
+        when (goalType) {
+            GoalType.MAINTAIN -> (currentWeight != null && effectiveStartWeight != null && effectiveMaintenance != null)
+            else -> (currentWeight != null && effectiveStartWeight != null) // maintenance can be null initially if user is typing TDEE
+        }
+
     val projection =
-        if (currentWeight != null && effectiveStartWeight != null) {
+        if (!canProject) {
+            null
+        } else if (goalType == GoalType.MAINTAIN) {
+            GoalCalculations.project(
+                goal =
+                    Goal(
+                        type = goalType,
+                        goalWeight = null,
+                        timeMode = GoalTimeMode.BY_DURATION, // doesn’t matter for maintain
+                        targetDate = targetDate?.time,
+                        rateMode = RateMode.PRESET,
+                        ratePercent = null,
+                        ratePreset = RatePreset.LEAN, // unused
+                        ratePerWeek = null,
+                        durationWeeks = null,
+                        startWeight = effectiveStartWeight!!,
+                    ),
+                currentWeight = currentWeight!!,
+                avgMaintenance = effectiveMaintenance!!,
+                rateInput = "",
+                selectedPreset = null,
+                durationWeeks = null,
+                targetDate = targetDate,
+            )
+        } else {
             GoalCalculations.project(
                 goal =
                     Goal(
@@ -193,17 +223,15 @@ fun GoalScreen(
                         ratePreset = if (rateMode == RateMode.PRESET) selectedPreset else null,
                         ratePerWeek = if (rateMode == RateMode.KG_PER_WEEK) parseRateInput(rateInput) else null,
                         durationWeeks = durationWeeks.toIntOrNull(),
-                        startWeight = effectiveStartWeight,
+                        startWeight = effectiveStartWeight!!,
                     ),
-                currentWeight = currentWeight,
-                avgMaintenance = effectiveMaintenance,
+                currentWeight = currentWeight!!,
+                avgMaintenance = effectiveMaintenance, // can be null here; project() will handle it
                 rateInput = rateInput,
                 selectedPreset = selectedPreset,
                 durationWeeks = durationWeeks.toIntOrNull(),
                 targetDate = targetDate,
             )
-        } else {
-            null
         }
 
     // ========== IMPOSSIBLE / INVALID GOAL CHECK ==========
@@ -222,7 +250,7 @@ fun GoalScreen(
     val isImpossibleGoal = validationIssues.isNotEmpty()
 
     // ========== UI ==========
-    if ((effectiveStartWeight == null || effectiveMaintenance == null) && projection == null) {
+    if (!canProject && projection == null) {
         GoalScreenFallback(
             onTDEEConfirmed = { manualTDEE = it },
             onStartWeightEntered = { tempStartWeight = it },
@@ -248,106 +276,139 @@ fun GoalScreen(
                         onSelected = { goalType = it },
                     )
 
-                    DropdownSelector(
-                        label = "How do you want to reach your goal?",
-                        options = GoalTimeMode.entries,
-                        selected = timeMode,
-                        onSelected = { timeMode = it },
-                    )
+                    if (goalType == GoalType.MAINTAIN) {
+                        // Keep it super simple for maintenance
+                        Spacer(Modifier.height(8.dp))
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text("Maintenance Goal", style = MaterialTheme.typography.titleMedium)
 
-                    // 1. Target Weight (unless duration mode)
-                    if (needsGoalWeight) {
-                        OutlinedTextField(
-                            value = goalWeight,
-                            onValueChange = { goalWeight = it },
-                            label = { Text("Target Weight (${weightUnit.name.lowercase()})") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true,
-                        )
-                    }
+                                // This relies on your 'projection' (which we already compute above)
+                                projection?.targetCalories?.let { cals ->
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text("Target Intake:", style = MaterialTheme.typography.bodyMedium)
+                                        Text("$cals kcal/day", style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                }
 
-                    // 2. Date (if by date)
-                    if (needsDate) {
-                        val dateFormatter =
-                            remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
-                        OutlinedTextField(
-                            value = targetDate?.let { dateFormatter.format(it) } ?: "",
-                            onValueChange = {},
-                            label = { Text("Target Date") },
-                            readOnly = true,
-                            trailingIcon = {
-                                Icon(
-                                    Icons.Default.DateRange,
-                                    contentDescription = null,
-                                )
-                            },
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        DatePickerDialog(
-                                            context,
-                                            { _, year, month, day ->
-                                                val cal = Calendar.getInstance()
-                                                cal.set(year, month, day)
-                                                targetDate = cal.time
-                                            },
-                                            Calendar.getInstance().get(Calendar.YEAR),
-                                            Calendar.getInstance().get(Calendar.MONTH),
-                                            Calendar.getInstance().get(Calendar.DAY_OF_MONTH),
-                                        ).show()
-                                    },
-                        )
-                    }
-
-                    // 3. Duration (if by duration)
-                    if (needsDuration) {
-                        OutlinedTextField(
-                            value = durationWeeks,
-                            onValueChange = { durationWeeks = it },
-                            label = { Text("Duration (weeks)") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true,
-                        )
-                    }
-
-                    // 4. Rate (if by rate or duration)
-                    if (needsRateInput) {
+                                // Optional: show which maintenance value we used
+                                projection?.usedMaintenance?.let { used ->
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text("Estimated Maintenance:", style = MaterialTheme.typography.bodyMedium)
+                                        Text("$used kcal/day", style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
                         DropdownSelector(
-                            label = "Rate Type",
-                            options = RateMode.entries,
-                            selected = rateMode,
-                            onSelected = { rateMode = it },
-                            labelForOption = { it.displayName(weightUnit) },
+                            label = "How do you want to reach your goal?",
+                            options = GoalTimeMode.entries,
+                            selected = timeMode,
+                            onSelected = { timeMode = it },
                         )
-                        when (rateMode) {
-                            RateMode.KG_PER_WEEK -> {
-                                OutlinedTextField(
-                                    value = rateInput,
-                                    onValueChange = { rateInput = it },
-                                    label = { Text("Rate (${weightUnit.name.lowercase()}/week)") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    singleLine = true,
-                                )
-                            }
+                        // 1. Target Weight (unless duration mode)
+                        if (needsGoalWeight) {
+                            OutlinedTextField(
+                                value = goalWeight,
+                                onValueChange = { goalWeight = it },
+                                label = { Text("Target Weight (${weightUnit.name.lowercase()})") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                            )
+                        }
 
-                            RateMode.BODYWEIGHT_PERCENT -> {
-                                OutlinedTextField(
-                                    value = rateInput,
-                                    onValueChange = { rateInput = it },
-                                    label = { Text("Rate (% bodyweight/week)") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    singleLine = true,
-                                )
-                            }
+                        // 2. Date (if by date)
+                        if (needsDate) {
+                            val dateFormatter =
+                                remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
+                            OutlinedTextField(
+                                value = targetDate?.let { dateFormatter.format(it) } ?: "",
+                                onValueChange = {},
+                                label = { Text("Target Date") },
+                                readOnly = true,
+                                trailingIcon = {
+                                    Icon(
+                                        Icons.Default.DateRange,
+                                        contentDescription = null,
+                                    )
+                                },
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            DatePickerDialog(
+                                                context,
+                                                { _, year, month, day ->
+                                                    val cal = Calendar.getInstance()
+                                                    cal.set(year, month, day)
+                                                    targetDate = cal.time
+                                                },
+                                                Calendar.getInstance().get(Calendar.YEAR),
+                                                Calendar.getInstance().get(Calendar.MONTH),
+                                                Calendar.getInstance().get(Calendar.DAY_OF_MONTH),
+                                            ).show()
+                                        },
+                            )
+                        }
 
-                            RateMode.PRESET -> {
-                                DropdownSelector(
-                                    label = "Preset",
-                                    options = RatePreset.entries,
-                                    selected = selectedPreset,
-                                    onSelected = { selectedPreset = it },
-                                )
+                        // 3. Duration (if by duration)
+                        if (needsDuration) {
+                            OutlinedTextField(
+                                value = durationWeeks,
+                                onValueChange = { durationWeeks = it },
+                                label = { Text("Duration (weeks)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                            )
+                        }
+
+                        // 4. Rate (if by rate or duration)
+                        if (needsRateInput) {
+                            DropdownSelector(
+                                label = "Rate Type",
+                                options = RateMode.entries,
+                                selected = rateMode,
+                                onSelected = { rateMode = it },
+                                labelForOption = { it.displayName(weightUnit) },
+                            )
+                            when (rateMode) {
+                                RateMode.KG_PER_WEEK -> {
+                                    OutlinedTextField(
+                                        value = rateInput,
+                                        onValueChange = { rateInput = it },
+                                        label = { Text("Rate (${weightUnit.name.lowercase()}/week)") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true,
+                                    )
+                                }
+
+                                RateMode.BODYWEIGHT_PERCENT -> {
+                                    OutlinedTextField(
+                                        value = rateInput,
+                                        onValueChange = { rateInput = it },
+                                        label = { Text("Rate (% bodyweight/week)") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true,
+                                    )
+                                }
+
+                                RateMode.PRESET -> {
+                                    DropdownSelector(
+                                        label = "Preset",
+                                        options = RatePreset.entries,
+                                        selected = selectedPreset,
+                                        onSelected = { selectedPreset = it },
+                                    )
+                                }
                             }
                         }
                     }
@@ -617,7 +678,7 @@ fun GoalScreen(
                                 .padding(top = 24.dp),
                         enabled =
                             !isImpossibleGoal &&
-                                effectiveStartWeight != null &&
+                                (goalType != GoalType.MAINTAIN || effectiveMaintenance != null) &&
                                 ((needsGoalWeight && goalWeight.isNotBlank()) || !needsGoalWeight) &&
                                 ((needsDuration && durationWeeks.isNotBlank()) || !needsDuration) &&
                                 ((needsRateInput && (rateInput.isNotBlank() || rateMode == RateMode.PRESET)) || !needsRateInput),
@@ -642,132 +703,134 @@ fun GoalScreen(
                         }
                     }
 
-                    Card(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(top = 16.dp),
-                    ) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("Goal Preview", style = MaterialTheme.typography.titleMedium)
-                            projection.targetCalories?.let { targetCalories ->
-                                Spacer(Modifier.height(6.dp))
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(
-                                        "Target Intake:",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.alignByBaseline(),
-                                    )
-                                    Text(
-                                        "$targetCalories kcal/day",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.alignByBaseline(),
-                                    )
+                    if (goalType != GoalType.MAINTAIN) {
+                        Card(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 16.dp),
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text("Goal Preview", style = MaterialTheme.typography.titleMedium)
+                                projection.targetCalories?.let { targetCalories ->
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text(
+                                            "Target Intake:",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.alignByBaseline(),
+                                        )
+                                        Text(
+                                            "$targetCalories kcal/day",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.alignByBaseline(),
+                                        )
+                                    }
                                 }
-                            }
-                            projection.dailyCalories?.let { dailyCalories ->
-                                Spacer(Modifier.height(6.dp))
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(
-                                        "Daily Calorie Change:",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.alignByBaseline(),
-                                    )
-                                    Text(
-                                        "$dailyCalories kcal/day",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.alignByBaseline(),
-                                    )
+                                projection.dailyCalories?.let { dailyCalories ->
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text(
+                                            "Daily Calorie Change:",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.alignByBaseline(),
+                                        )
+                                        Text(
+                                            "$dailyCalories kcal/day",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.alignByBaseline(),
+                                        )
+                                    }
                                 }
-                            }
 
-                            projection.goalDate?.let { goalDate ->
-                                Spacer(Modifier.height(6.dp))
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    val label =
-                                        when (timeMode) {
-                                            GoalTimeMode.BY_DURATION, GoalTimeMode.BY_RATE -> "Goal Date:"
-                                            GoalTimeMode.BY_DATE -> "Target Goal Date:"
-                                        }
-                                    Text(
-                                        label,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.alignByBaseline(),
-                                    )
-                                    Text(
-                                        SimpleDateFormat(
-                                            "dd MMM yyyy",
-                                            Locale.getDefault(),
-                                        ).format(goalDate),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.alignByBaseline(),
-                                    )
+                                projection.goalDate?.let { goalDate ->
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        val label =
+                                            when (timeMode) {
+                                                GoalTimeMode.BY_DURATION, GoalTimeMode.BY_RATE -> "Goal Date:"
+                                                GoalTimeMode.BY_DATE -> "Target Goal Date:"
+                                            }
+                                        Text(
+                                            label,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.alignByBaseline(),
+                                        )
+                                        Text(
+                                            SimpleDateFormat(
+                                                "dd MMM yyyy",
+                                                Locale.getDefault(),
+                                            ).format(goalDate),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.alignByBaseline(),
+                                        )
+                                    }
                                 }
-                            }
-                            projection.finalWeight?.let { finalKg ->
-                                Spacer(Modifier.height(6.dp))
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    val label =
-                                        when (timeMode) {
-                                            GoalTimeMode.BY_DURATION -> "Estimated Final Weight:"
-                                            GoalTimeMode.BY_DATE, GoalTimeMode.BY_RATE -> "Target Weight:"
-                                        }
-                                    val finalDisplay =
-                                        when (weightUnit) {
-                                            WeightUnit.KG -> finalKg
-                                            WeightUnit.LB -> finalKg.kgToLb()
-                                        }
-                                    Text(
-                                        label,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.alignByBaseline(),
-                                    )
-                                    Text(
-                                        String.format(
-                                            "%.1f ${weightUnit.name.lowercase()}",
-                                            finalDisplay,
-                                        ),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.alignByBaseline(),
-                                    )
+                                projection.finalWeight?.let { finalKg ->
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        val label =
+                                            when (timeMode) {
+                                                GoalTimeMode.BY_DURATION -> "Estimated Final Weight:"
+                                                GoalTimeMode.BY_DATE, GoalTimeMode.BY_RATE -> "Target Weight:"
+                                            }
+                                        val finalDisplay =
+                                            when (weightUnit) {
+                                                WeightUnit.KG -> finalKg
+                                                WeightUnit.LB -> finalKg.kgToLb()
+                                            }
+                                        Text(
+                                            label,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.alignByBaseline(),
+                                        )
+                                        Text(
+                                            String.format(
+                                                "%.1f ${weightUnit.name.lowercase()}",
+                                                finalDisplay,
+                                            ),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.alignByBaseline(),
+                                        )
+                                    }
                                 }
-                            }
-                            projection.weightChange?.let { changeKg ->
-                                Spacer(Modifier.height(6.dp))
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(
-                                        "Total Weight Change:",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.alignByBaseline(),
-                                    )
-                                    val changeDisplay =
-                                        when (weightUnit) {
-                                            WeightUnit.KG -> changeKg
-                                            WeightUnit.LB -> changeKg.kgToLb()
-                                        }
-                                    Text(
-                                        String.format(
-                                            "%.1f ${weightUnit.name.lowercase()}",
-                                            changeDisplay,
-                                        ),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.alignByBaseline(),
-                                    )
+                                projection.weightChange?.let { changeKg ->
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text(
+                                            "Total Weight Change:",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.alignByBaseline(),
+                                        )
+                                        val changeDisplay =
+                                            when (weightUnit) {
+                                                WeightUnit.KG -> changeKg
+                                                WeightUnit.LB -> changeKg.kgToLb()
+                                            }
+                                        Text(
+                                            String.format(
+                                                "%.1f ${weightUnit.name.lowercase()}",
+                                                changeDisplay,
+                                            ),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.alignByBaseline(),
+                                        )
+                                    }
                                 }
                             }
                         }

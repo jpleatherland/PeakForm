@@ -57,6 +57,20 @@ object GoalCalculations {
             )
         }
 
+        if (goal.type == GoalType.MAINTAIN) {
+            return GoalProjection(
+                rateKgPerWeek = 0.0,
+                goalDate = null,
+                finalWeight = currentWeight, // we’re holding steady
+                weightChange = 0.0,
+                totalCalories = 0,
+                dailyCalories = 0, // <-- important: not null
+                targetCalories = avgMaintenance, // may still be null if you truly don’t have it yet
+                startWeight = startWeight ?: currentWeight,
+                usedMaintenance = avgMaintenance,
+            )
+        }
+
         // 1. Direction (sign)
         val rateSign =
             goal.goalWeight?.let { gw ->
@@ -93,9 +107,12 @@ object GoalCalculations {
                 else -> {
                     val rawRate =
                         when (goal.rateMode) {
-                            RateMode.KG_PER_WEEK -> rateInput.toDoubleOrNull() ?: 0.0
-                            RateMode.BODYWEIGHT_PERCENT -> ((goal.ratePercent ?: rateInput.toDoubleOrNull() ?: 0.0) / 100.0) * currentWeight
-                            RateMode.PRESET -> (goal.ratePreset ?: selectedPreset ?: RatePreset.LEAN).percentPerWeek * currentWeight
+                            RateMode.KG_PER_WEEK ->
+                                goal.ratePerWeek ?: rateInput.toDoubleOrNull() ?: 0.0
+                            RateMode.BODYWEIGHT_PERCENT ->
+                                ((goal.ratePercent ?: rateInput.toDoubleOrNull() ?: 0.0) / 100.0) * currentWeight
+                            RateMode.PRESET ->
+                                (goal.ratePreset ?: selectedPreset ?: RatePreset.LEAN).percentPerWeek * currentWeight
                             else -> 0.0
                         }
                     rawRate * rateSign
@@ -309,7 +326,8 @@ fun validateGoalProjection(
         issues += GoalValidationIssue.MISSING_START_WEIGHT
     }
 
-    if (projection.dailyCalories == null) {
+    // Only require dailyCalories for non-maintain goals
+    if (goal.type != GoalType.MAINTAIN && projection.dailyCalories == null) {
         issues += GoalValidationIssue.MISSING_CALORIES
     }
 
@@ -332,7 +350,9 @@ fun validateGoalProjection(
                 issues += GoalValidationIssue.TARGET_CALORIES_TOO_HIGH
             }
         }
-        else -> Unit
+        GoalType.MAINTAIN -> {
+            // no extra checks (optionally you could warn if maintenance is null)
+        }
     }
 
     return issues

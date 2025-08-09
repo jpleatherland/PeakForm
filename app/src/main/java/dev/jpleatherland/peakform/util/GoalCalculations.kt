@@ -71,17 +71,24 @@ object GoalCalculations {
             )
         }
 
-        // 1. Direction (sign)
-        val rateSign =
-            goal.goalWeight?.let { gw ->
-                when {
-                    gw < currentWeight -> -1.0
-                    gw > currentWeight -> 1.0
-                    else -> 0.0
+// 1. Direction (sign)
+        val rateSign: Double =
+            when {
+                // Only let goalWeight drive the sign when it's relevant
+                (
+                    goal.timeMode == GoalTimeMode.BY_DATE ||
+                        (goal.timeMode == GoalTimeMode.BY_RATE && goal.goalWeight != null)
+                ) -> {
+                    val gw = goal.goalWeight
+                    when {
+                        gw == null || gw == currentWeight -> 0.0
+                        gw > currentWeight -> 1.0 // gaining
+                        else -> -1.0 // losing
+                    }
                 }
-            } ?: when (goal.type) {
-                GoalType.CUT -> -1.0
-                GoalType.BULK -> 1.0
+                // Otherwise, use the goal type
+                goal.type == GoalType.CUT -> -1.0
+                goal.type == GoalType.BULK -> 1.0
                 else -> 0.0
             }
 
@@ -89,13 +96,12 @@ object GoalCalculations {
         val rateKgPerWeek: Double =
             when (goal.timeMode) {
                 GoalTimeMode.BY_DATE -> {
-                    // Calculate needed rate to hit target by target date
                     val date = targetDate ?: goal.targetDate?.let { Date(it) }
                     if (goal.goalWeight != null && date != null) {
                         val millisDiff = date.time - System.currentTimeMillis()
                         val weeks = millisDiff / (1000.0 * 60 * 60 * 24 * 7)
                         if (weeks > 0) {
-                            val delta = goal.goalWeight - currentWeight
+                            val delta = goal.goalWeight - currentWeight // sign comes from delta
                             delta / weeks
                         } else {
                             0.0
@@ -105,7 +111,7 @@ object GoalCalculations {
                     }
                 }
                 else -> {
-                    val rawRate =
+                    val raw =
                         when (goal.rateMode) {
                             RateMode.KG_PER_WEEK ->
                                 goal.ratePerWeek ?: rateInput.toDoubleOrNull() ?: 0.0
@@ -115,7 +121,7 @@ object GoalCalculations {
                                 (goal.ratePreset ?: selectedPreset ?: RatePreset.LEAN).percentPerWeek * currentWeight
                             else -> 0.0
                         }
-                    rawRate * rateSign
+                    kotlin.math.abs(raw) * rateSign
                 }
             }
 

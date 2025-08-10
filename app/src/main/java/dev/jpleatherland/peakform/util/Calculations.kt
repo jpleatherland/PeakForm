@@ -1,5 +1,6 @@
 package dev.jpleatherland.peakform.util
 
+import android.util.Log
 import dev.jpleatherland.peakform.data.WeightEntry
 import java.util.concurrent.TimeUnit
 
@@ -14,9 +15,10 @@ object MaintenanceCalculator {
         // Use only days in the last 14 with both weight and calories
         val recent =
             entries
-                .filter { it.weight != null && it.calories != null && it.date >= fourteenDaysAgo }
+                .filter { it.weight != null && it.calories != null && it.date in fourteenDaysAgo..now }
                 .sortedBy { it.date }
 
+        Log.d("MaintenanceCalculator", "Recent entries: ${recent.size} in the last 14 days")
         if (recent.size < 2) {
             return MaintenanceEstimateResult(
                 estimatedCalories = null,

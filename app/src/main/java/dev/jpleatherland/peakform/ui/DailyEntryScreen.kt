@@ -73,10 +73,8 @@ fun DailyEntryScreen(
 
     LaunchedEffect(entries, selectedDate) {
         if (selectedDate == null && entries.isNotEmpty()) {
-            val alreadyLoggedToday =
-                entries.any { entry -> Date(entry.date).sameDayAs(today) }
-            selectedDate =
-                if (alreadyLoggedToday) null else today
+            val alreadyLoggedToday = entries.any { entry -> Date(entry.date).sameDayAs(today) }
+            selectedDate = if (alreadyLoggedToday) null else today
         }
     }
 
@@ -108,27 +106,40 @@ fun DailyEntryScreen(
     val maintenanceEstimateErrorMessage by viewModel.maintenanceEstimateErrorMessage.collectAsState()
     val goal by viewModel.goal.collectAsState()
     val goalProgress by viewModel.goalProgress.collectAsState()
+    val activeSegment by viewModel.activeSegment.collectAsState()
 
     // Use 7-day avg if present, else last entry, else fallback
     val currentWeight = avgWeight ?: entries.lastOrNull()?.weight ?: 70.0
 
-    // Set up projection using most recent Goal + current weight and maintenance
-    val projection =
-        GoalCalculations.project(
-            goal = goal,
-            currentWeight = currentWeight,
-            avgMaintenance = maintenance,
-            rateInput =
-                when (goal?.rateMode) {
-                    RateMode.KG_PER_WEEK -> goal?.ratePerWeek?.toString() ?: ""
-                    RateMode.BODYWEIGHT_PERCENT -> goal?.ratePercent?.toString() ?: ""
-                    RateMode.PRESET -> "" // not used
-                    else -> ""
-                },
-            selectedPreset = goal?.ratePreset,
-            durationWeeks = goal?.durationWeeks,
-            targetDate = goal?.targetDate?.let { Date(it) },
-        )
+    // --- Stable projection from GOAL SNAPSHOT (prevents drift in Goal Details fallback) ---
+    // Uses startWeight + initialMaintenanceCalories and ignores rolling maintenance.
+    val stableProjection =
+        remember(goal) {
+            goal?.let { g ->
+                GoalCalculations.project(
+                    goal = g,
+                    currentWeight = g.startWeight, // snapshot at goal creation
+                    avgMaintenance = null, // ignore rolling estimate for stability
+                    rateInput =
+                        when (g.rateMode) {
+                            RateMode.KG_PER_WEEK -> g.ratePerWeek?.toString() ?: ""
+                            RateMode.BODYWEIGHT_PERCENT -> g.ratePercent?.toString() ?: ""
+                            RateMode.PRESET -> ""
+                            else -> ""
+                        },
+                    selectedPreset = g.ratePreset,
+                    durationWeeks = g.durationWeeks,
+                    targetDate = g.targetDate?.let { Date(it) },
+                    usedMaintenance = g.initialMaintenanceCalories,
+                )
+            }
+        }
+
+    // Weight remaining is dynamic based on current progress, but doesn’t cause target to drift
+    val weightRemaining: Double? =
+        stableProjection?.finalWeight?.let { final ->
+            kotlin.math.abs(final - currentWeight)
+        }
 
     val sdf = SimpleDateFormat("dd/MM", Locale.getDefault())
 
@@ -168,8 +179,7 @@ fun DailyEntryScreen(
             selectedDate?.let { nonNullDate ->
                 val formattedDate = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(nonNullDate)
                 Text(formattedDate)
-            }
-                ?: Text("Select Date")
+            } ?: Text("Select Date")
         }
 
         selectedDate?.let { nonNullDate ->
@@ -260,6 +270,7 @@ fun DailyEntryScreen(
             }
         }
 
+        // --- Always show dynamic (calculated) maintenance, even if a goal exists ---
         if (maintenance != null) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -267,25 +278,20 @@ fun DailyEntryScreen(
             ) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Estimated Maintenance Calories", style = MaterialTheme.typography.titleMedium)
-                    Text(text = "$maintenance kcal", style = MaterialTheme.typography.bodyLarge)
+                    Text("$maintenance kcal", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        text = "Based on $maintenanceEntryCount entries in the last 14 days",
+                        "Based on $maintenanceEntryCount entries in the last 14 days",
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
             }
         } else if (maintenanceEstimateErrorMessage != null) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+            Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Estimated Maintenance Calories", style = MaterialTheme.typography.titleMedium)
+                    Text(maintenanceEstimateErrorMessage ?: "", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        text = "$maintenanceEstimateErrorMessage",
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        text = "Based on $maintenanceEntryCount entries in the last 14 days",
+                        "Based on $maintenanceEntryCount entries in the last 14 days",
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
@@ -299,7 +305,7 @@ fun DailyEntryScreen(
             Column(Modifier.padding(16.dp)) {
                 Text("Goal Details", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
-                goal?.let {
+                goal?.let { g ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(
                             text = "Current Goal:",
@@ -308,37 +314,28 @@ fun DailyEntryScreen(
                         )
                         Text(
                             text =
-                                it.type.name
+                                g.type.name
                                     .lowercase()
                                     .replaceFirstChar { c -> c.uppercase() },
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.alignByBaseline(),
                         )
                     }
-                    projection.targetCalories?.let { targetCalories ->
+
+                    // Target Intake: segment-first, fallback = stableProjection (snapshot)
+                    val targetIntake = activeSegment?.targetCalories ?: stableProjection?.targetCalories
+                    targetIntake?.let { kcal ->
                         Spacer(Modifier.height(6.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(
-                                "Target Intake:",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.alignByBaseline(),
-                            )
-                            Text(
-                                "$targetCalories kcal/day",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.alignByBaseline(),
-                            )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Target Intake:", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.alignByBaseline())
+                            Text("$kcal kcal/day", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.alignByBaseline())
                         }
                     }
-                    projection.dailyCalories?.let { dailyCalories ->
+
+                    // Daily Calorie Change — from stable snapshot (won't drift)
+                    stableProjection?.dailyCalories?.let { dailyCalories ->
                         Spacer(Modifier.height(6.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(
                                 "Daily Calorie Change:",
                                 style = MaterialTheme.typography.bodyMedium,
@@ -351,68 +348,45 @@ fun DailyEntryScreen(
                             )
                         }
                     }
-                    projection.goalDate?.let { goalDate ->
+
+                    // Goal Date — from stable snapshot
+                    stableProjection?.goalDate?.let { goalDate ->
                         Spacer(Modifier.height(6.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             val label =
-                                when (goal?.timeMode) {
+                                when (g.timeMode) {
                                     GoalTimeMode.BY_DURATION, GoalTimeMode.BY_RATE -> "Goal Date:"
                                     GoalTimeMode.BY_DATE -> "Target Goal Date:"
                                     else -> "Goal Date:"
                                 }
-                            Text(
-                                label,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.alignByBaseline(),
-                            )
-                            Text(
-                                sdf.format(goalDate),
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.alignByBaseline(),
-                            )
+                            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.alignByBaseline())
+                            Text(sdf.format(goalDate), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.alignByBaseline())
                         }
                     }
-                    projection.finalWeight?.let { finalWeight ->
+
+                    // Final Weight — from stable snapshot
+                    stableProjection?.finalWeight?.let { finalWeight ->
                         Spacer(Modifier.height(6.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             val label =
-                                when (goal?.timeMode) {
+                                when (g.timeMode) {
                                     GoalTimeMode.BY_DURATION -> "Estimated Final Weight:"
                                     GoalTimeMode.BY_DATE, GoalTimeMode.BY_RATE -> "Target Weight:"
                                     else -> "Final Weight:"
                                 }
                             val displayWeight = formatWeight(finalWeight, weightUnit)
-                            Text(
-                                label,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.alignByBaseline(),
-                            )
-                            Text(
-                                displayWeight,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.alignByBaseline(),
-                            )
+                            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.alignByBaseline())
+                            Text(displayWeight, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.alignByBaseline())
                         }
                     }
-                    projection.weightChange?.let { weightChange ->
+
+                    // Weight Remaining — dynamic vs current progress
+                    weightRemaining?.let { rem ->
                         Spacer(Modifier.height(6.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Weight Remaining:", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.alignByBaseline())
                             Text(
-                                "Weight Remaining:",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.alignByBaseline(),
-                            )
-                            Text(
-                                formatWeight(weightChange, weightUnit),
+                                formatWeight(rem, weightUnit),
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.alignByBaseline(),
                             )

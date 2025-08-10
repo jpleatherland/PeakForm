@@ -124,16 +124,34 @@ class WeightViewModel(
             .map { it?.targetCalories }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val activeSegment: StateFlow<GoalSegment?> =
+        goal
+            .flatMapLatest { g ->
+                if (g == null) {
+                    flowOf(null)
+                } else {
+                    goalSegmentRepository
+                        .getAllSegmentsForGoal(goalId = g.id)
+                        .map { segments ->
+                            val now = System.currentTimeMillis()
+                            segments.find { now in it.startDate..it.endDate }
+                                ?: segments.maxByOrNull { it.createdAt } // fallback: latest
+                        }
+                }
+            }.distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     val goalProgress: StateFlow<GoalProgress?> =
-        combine(goalProjection, goal) { projection, goal ->
-            if (projection == null || goal == null) return@combine null
+        combine(goal, activeSegment, goalProjection) { g, seg, proj ->
+            if (g == null || proj == null) return@combine null
             GoalProgress(
-                targetCalories = projection.targetCalories ?: 0,
-                estimatedGoalDate = projection.goalDate,
-                targetDate = goal.targetDate?.let { Date(it) },
+                targetCalories = seg?.targetCalories ?: (proj.targetCalories ?: 0),
+                estimatedGoalDate = proj.goalDate,
+                targetDate = g.targetDate?.let { Date(it) },
                 isAheadOfSchedule =
-                    projection.goalDate?.let { estimated ->
-                        goal.targetDate?.let { target -> estimated.before(Date(target)) }
+                    proj.goalDate?.let { est ->
+                        g.targetDate?.let { tgt -> est.before(Date(tgt)) }
                     } ?: false,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
